@@ -1,4 +1,5 @@
 import Sidebar from '@/components/Sidebar';
+import AppFooter from '@/components/AppFooter';
 
 export default function SubLayout({ children }: { children: React.ReactNode }) {
     return (
@@ -14,7 +15,8 @@ export default function SubLayout({ children }: { children: React.ReactNode }) {
                         Tahun {new Date().getFullYear()}
                     </span>
                 </header>
-                <div className="flex-1 p-6 md:p-8 overflow-auto">{children}</div>
+                <div className="flex-1 p-6 md:p-8 overflow-auto">{children}
+                    <AppFooter /></div>
             </main>
         </div>
     );

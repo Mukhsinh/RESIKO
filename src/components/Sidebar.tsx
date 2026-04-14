@@ -104,6 +104,24 @@ export default function Sidebar() {
     });
     const [mobileOpen, setMobileOpen] = useState(false);
 
+    const [appSettings, setAppSettings] = useState<{ nama_rs: string, logo_url: string } | null>(null);
+    const [userProfile, setUserProfile] = useState<{ full_name: string, role: string } | null>(null);
+
+    React.useEffect(() => {
+        const loadGlobalData = async () => {
+            const { supabase } = await import('@/lib/supabase');
+            const { data: settings } = await supabase.from('app_settings').select('nama_rs, logo_url').limit(1).single();
+            if (settings) setAppSettings(settings);
+
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                const { data: profile } = await supabase.from('user_profiles').select('full_name, role').eq('id', user.id).single();
+                if (profile) setUserProfile(profile);
+            }
+        };
+        loadGlobalData();
+    }, []);
+
     const toggle = (label: string) =>
         setOpenMenus(prev => ({ ...prev, [label]: !prev[label] }));
 
@@ -116,16 +134,24 @@ export default function Sidebar() {
     };
 
     const SidebarContent = () => (
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col h-full z-10 relative">
             {/* Logo */}
             <div className="px-5 py-6 border-b border-slate-700/60">
                 <div className="flex items-center space-x-3">
-                    <div className="w-9 h-9 rounded-lg bg-[#137fec] flex items-center justify-center shadow-lg shadow-blue-500/30">
-                        <ShieldAlert size={20} className="text-white" />
-                    </div>
-                    <div>
-                        <h1 className="text-white font-bold text-base leading-none">ManRisk RS</h1>
-                        <p className="text-slate-500 text-[11px] mt-0.5">Strategi & Risiko</p>
+                    {appSettings?.logo_url ? (
+                        <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center p-1 shrink-0 overflow-hidden shadow-lg shadow-blue-500/30 object-contain">
+                            <img src={appSettings.logo_url} alt="Logo" className="max-w-full max-h-full" />
+                        </div>
+                    ) : (
+                        <div className="w-9 h-9 rounded-lg bg-[#137fec] flex items-center justify-center shadow-lg shadow-blue-500/30 shrink-0">
+                            <ShieldAlert size={20} className="text-white" />
+                        </div>
+                    )}
+                    <div className="overflow-hidden">
+                        <h1 className="text-white font-bold text-sm sm:text-base leading-tight truncate">
+                            {appSettings?.nama_rs || 'ManRisk RS'}
+                        </h1>
+                        <p className="text-slate-500 text-[11px] mt-0.5 truncate border-t border-slate-700/50 pt-0.5 inline-block">Strategi & Risiko</p>
                     </div>
                 </div>
             </div>
@@ -232,11 +258,11 @@ export default function Sidebar() {
             <div className="p-4 border-t border-slate-700/60">
                 <div className="flex items-center space-x-3 px-2 py-2 rounded-lg hover:bg-slate-800 cursor-pointer transition-colors">
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#137fec] to-indigo-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
-                        A
+                        {userProfile?.full_name?.charAt(0).toUpperCase() || 'A'}
                     </div>
                     <div className="min-w-0 flex-1">
-                        <p className="text-slate-300 text-xs font-semibold truncate">Admin</p>
-                        <p className="text-slate-500 text-[10px] truncate">Superadmin</p>
+                        <p className="text-slate-300 text-xs font-semibold truncate capitalize">{userProfile?.full_name || 'Admin'}</p>
+                        <p className="text-slate-500 text-[10px] truncate capitalize">{userProfile?.role || 'Superadmin'}</p>
                     </div>
                 </div>
                 <button

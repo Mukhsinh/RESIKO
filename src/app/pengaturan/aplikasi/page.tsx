@@ -67,6 +67,17 @@ export default function PengaturanAplikasiPage() {
 
     const f = (k: keyof AppSettings, v: string) => setForm(prev => ({ ...prev, [k]: v }));
 
+    const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const base64 = e.target?.result as string;
+            f('logo_url', base64);
+        };
+        reader.readAsDataURL(file);
+    };
+
     const handleSave = async () => {
         setSaving(true);
         try {
@@ -187,10 +198,13 @@ export default function PengaturanAplikasiPage() {
                             </div>
                         </div>
                         <div>
-                            <label className="form-label">URL Logo Rumah Sakit</label>
-                            <input type="url" className="form-input w-full" value={form.logo_url} onChange={e => f('logo_url', e.target.value)} placeholder="https://..." />
+                            <label className="form-label">Upload Logo Rumah Sakit</label>
+                            <input type="file" accept="image/png, image/jpeg, image/jpg" className="form-input w-full p-1.5" onChange={handleLogoUpload} />
                             {form.logo_url && (
-                                <img src={form.logo_url} alt="Logo Preview" className="mt-2 h-10 object-contain rounded" onError={e => (e.currentTarget.style.display = 'none')} />
+                                <div className="mt-2 text-xs text-slate-500 flex items-center justify-between">
+                                    <img src={form.logo_url} alt="Logo Preview" className="h-10 object-contain rounded" onError={e => (e.currentTarget.style.display = 'none')} />
+                                    <button onClick={() => f('logo_url', '')} className="text-rose-500 hover:underline">Hapus Logo</button>
+                                </div>
                             )}
                         </div>
                     </div>

@@ -1,4 +1,5 @@
 import Sidebar from '@/components/Sidebar';
+import AppFooter from '@/components/AppFooter';
 export default function SubLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen bg-slate-50">
@@ -10,7 +11,8 @@ export default function SubLayout({ children }: { children: React.ReactNode }) {
           </div>
           <span className="text-xs bg-[#137fec]/10 text-[#137fec] font-semibold px-3 py-1.5 rounded-full border border-[#137fec]/20">Tahun 2026</span>
         </header>
-        <div className="flex-1 p-6 md:p-8 overflow-auto">{children}</div>
+        <div className="flex-1 p-6 md:p-8 overflow-auto">{children}
+                    <AppFooter /></div>
       </main>
     </div>
   );

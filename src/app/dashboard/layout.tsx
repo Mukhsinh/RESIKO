@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { LogOut } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
+import AppFooter from '@/components/AppFooter';
 import { supabase } from '@/lib/supabase';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -72,6 +73,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 {/* Page Content */}
                 <div className="flex-1 p-6 md:p-8 overflow-auto">
                     {children}
+                    <AppFooter />
                 </div>
             </main>
         </div>

@@ -14,6 +14,13 @@ export default function DashboardPage() {
         totalStrategi: 0, strategiTercapai: 0,
     });
 
+    const [welcomeData, setWelcomeData] = useState({
+        userName: '',
+        userRole: '',
+        unitKerja: '',
+        instansi: 'Sistem Manajemen Rumah Sakit',
+    });
+
     useEffect(() => {
         const fetchStats = async () => {
             const [{ count: totalRisiko }, { count: risikoTinggi }, { count: totalStrategi }] = await Promise.all([
@@ -27,6 +34,26 @@ export default function DashboardPage() {
                 risikoTinggi: risikoTinggi ?? 0,
                 totalStrategi: totalStrategi ?? 0,
             }));
+
+            // Fetch Welcome details
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                const { data: profile } = await supabase.from('user_profiles').select('full_name, role, unit_kerja_id').eq('id', user.id).single();
+                let unitName = 'Semua Unit';
+                if (profile?.unit_kerja_id) {
+                    const { data: unit } = await supabase.from('unit_kerja').select('nama_unit').eq('id', profile.unit_kerja_id).single();
+                    if (unit) unitName = unit.nama_unit;
+                }
+
+                const { data: settings } = await supabase.from('app_settings').select('nama_rs').limit(1).single();
+
+                setWelcomeData({
+                    userName: profile?.full_name || user.email || 'User',
+                    userRole: profile?.role || 'user',
+                    unitKerja: unitName,
+                    instansi: settings?.nama_rs || 'Rumah Sakit',
+                });
+            }
         };
         fetchStats();
     }, []);
@@ -35,10 +62,27 @@ export default function DashboardPage() {
 
     return (
         <div>
+            {/* Info Strip (Welcome) */}
+            <div className="card flex items-center space-x-4 mb-8 bg-gradient-to-r from-blue-50 to-indigo-50/50 border-l-4 border-[#137fec]">
+                <div className="w-12 h-12 rounded-xl bg-white shadow-sm flex items-center justify-center shrink-0">
+                    <Clock size={24} className="text-[#137fec]" />
+                </div>
+                <div>
+                    <p className="text-lg font-bold text-slate-800">
+                        Selamat Datang, {welcomeData.userName} 👋
+                    </p>
+                    <p className="text-sm text-slate-500 mt-0.5 font-medium">
+                        {welcomeData.unitKerja} — {welcomeData.instansi}
+                    </p>
+                </div>
+            </div>
+
             {/* Header */}
-            <div className="mb-8">
-                <h1 className="text-2xl font-bold text-slate-800">Dashboard</h1>
-                <p className="text-sm text-slate-500 mt-1">Ringkasan Manajemen Strategi & Risiko Tahun {currentYear}</p>
+            <div className="mb-6 flex items-center justify-between">
+                <div>
+                    <h1 className="text-2xl font-bold text-slate-800">Dashboard Utama</h1>
+                    <p className="text-sm text-slate-500 mt-1">Ringkasan Manajemen Strategi & Risiko Tahun {currentYear}</p>
+                </div>
             </div>
 
             {/* Score Cards */}
@@ -96,19 +140,6 @@ export default function DashboardPage() {
                     desc="Pantau realisasi sasaran strategis"
                     color="bg-blue-50"
                 />
-            </div>
-
-            {/* Info Strip */}
-            <div className="card flex items-center space-x-4">
-                <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0">
-                    <Clock size={20} className="text-indigo-500" />
-                </div>
-                <div>
-                    <p className="text-sm font-semibold text-slate-700">Selamat Datang di ManRisk RS</p>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                        Sistem terintegrasi manajemen strategi dan risiko rumah sakit. Navigasi menggunakan menu di samping.
-                    </p>
-                </div>
             </div>
         </div>
     );
