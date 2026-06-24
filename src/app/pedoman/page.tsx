@@ -1,16 +1,19 @@
 'use client';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { PageHeader } from '@/components/SharedUI';
 import { BookOpen, FileText, Download, Printer, X, Calendar, MapPin, Phone, CheckCircle2, ChevronRight } from 'lucide-react';
 import { GUIDES_CONTENT, TOR_CONTENT } from './guide-content';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { useAppSettings } from '@/hooks/useAppSettings';
 
 export default function PedomanPage() {
     const [activeTab, setActiveTab] = useState<'guides' | 'tor'>('guides');
     const [selectedGuide, setSelectedGuide] = useState<typeof GUIDES_CONTENT[0] | null>(null);
     const [isExporting, setIsExporting] = useState(false);
-    const contentRef = useRef<HTMLDivElement>(null);
+    const { settings } = useAppSettings();
+    const appName = settings?.nama_aplikasi || 'ManRisk RS';
+    const rsName = settings?.nama_rs || 'RSUD BENDAN';
 
     const exportToPDF = (guide: typeof GUIDES_CONTENT[0]) => {
         setIsExporting(true);
@@ -33,7 +36,7 @@ export default function PedomanPage() {
 
         doc.setFontSize(14);
         doc.setFont('helvetica', 'normal');
-        doc.text('Sistem Manajemen Strategi & Risiko (ManRisk RS)', margin, 95);
+        doc.text(`Sistem Manajemen Strategi & Risiko (${appName})`, margin, 95);
 
         doc.setDrawColor(19, 127, 236);
         doc.setLineWidth(1.5);
@@ -68,7 +71,7 @@ export default function PedomanPage() {
             doc.setPage(i);
             doc.setFontSize(9);
             doc.setTextColor(150, 150, 150);
-            doc.text(`Dicetak melalui ManRisk RS pada ${new Date().toLocaleDateString('id-ID')}`, margin, doc.internal.pageSize.getHeight() - 10);
+            doc.text(`Dicetak melalui ${appName} pada ${new Date().toLocaleDateString('id-ID')}`, margin, doc.internal.pageSize.getHeight() - 10);
             doc.text(`Halaman ${i} dari ${pageCount}`, pageWidth - margin - 20, doc.internal.pageSize.getHeight() - 10);
         }
 
@@ -87,7 +90,7 @@ export default function PedomanPage() {
         doc.text(TOR_CONTENT.title.toUpperCase(), pageWidth / 2, 25, { align: 'center' });
 
         doc.setFontSize(12);
-        doc.text('MANRISK RS - RSUD BENDAN', pageWidth / 2, 32, { align: 'center' });
+        doc.text(`${appName.toUpperCase()} - ${rsName.toUpperCase()}`, pageWidth / 2, 32, { align: 'center' });
         doc.setLineWidth(0.5);
         doc.line(margin, 38, pageWidth - margin, 38);
 
@@ -149,7 +152,7 @@ export default function PedomanPage() {
         <div className="max-w-7xl mx-auto pb-10">
             <PageHeader
                 title="Pusat Dokumentasi & Panduan"
-                subtitle="Sumber daya komprehensif untuk penguasaan sistem ManRisk RS."
+                subtitle={`Sumber daya komprehensif untuk penguasaan sistem ${appName}.`}
             />
 
             <div className="flex bg-white p-1 rounded-2xl shadow-xs border border-slate-100 mb-8 w-fit">
@@ -294,7 +297,7 @@ export default function PedomanPage() {
                                 <div className="text-3xl">{selectedGuide.icon}</div>
                                 <div>
                                     <h3 className="text-xl font-black text-slate-800 leading-tight">{selectedGuide.title}</h3>
-                                    <p className="text-xs text-slate-400 font-medium mt-0.5 uppercase tracking-wider">Materi Panduan ManRisk RS</p>
+                                    <p className="text-xs text-slate-400 font-medium mt-0.5 uppercase tracking-wider">Materi Panduan {appName}</p>
                                 </div>
                             </div>
                             <div className="flex items-center gap-2">
@@ -347,7 +350,7 @@ export default function PedomanPage() {
 
                                 <div className="pt-20 mt-20 border-t border-slate-100 flex justify-between items-center text-xs font-black text-slate-300 uppercase tracking-widest">
                                     <span>Versi 1.0 (Digital Edition)</span>
-                                    <span>ManRisk RS &copy; 2026</span>
+                                    <span>{appName} &copy; 2026</span>
                                 </div>
                             </div>
                         </div>

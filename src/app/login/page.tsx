@@ -2,9 +2,11 @@
 
 import React, { useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { ShieldAlert, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { ShieldAlert, Eye, EyeOff, Loader2, MessageCircle } from 'lucide-react';
+import { useAppSettings } from '@/hooks/useAppSettings';
 
 export default function LoginPage() {
+    const { settings, loading: settingsLoading } = useAppSettings();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -37,28 +39,38 @@ export default function LoginPage() {
                 <div className="bg-white border border-slate-200 rounded-3xl p-8 shadow-2xl shadow-slate-200/50">
                     {/* Logo */}
                     <div className="flex flex-col items-center mb-8">
-                        <div className="w-16 h-16 rounded-2xl bg-[#137fec] flex items-center justify-center shadow-lg shadow-blue-500/30 mb-4">
-                            <ShieldAlert size={32} className="text-white" />
-                        </div>
-                        <h1 className="text-2xl font-bold text-slate-800">ManRisk RS</h1>
-                        <p className="text-slate-500 text-sm mt-1">Sistem Manajemen Strategi & Risiko</p>
+                        {settings?.logo_url ? (
+                            <div className="w-20 h-20 rounded-2xl bg-white flex items-center justify-center p-2 shadow-lg shadow-blue-500/10 mb-4 border border-slate-100 overflow-hidden">
+                                <img src={settings.logo_url} alt="Logo" className="max-w-full max-h-full object-contain" />
+                            </div>
+                        ) : (
+                            <div className="w-20 h-20 rounded-2xl bg-[#137fec] flex items-center justify-center shadow-lg shadow-blue-500/30 mb-4">
+                                <ShieldAlert size={32} className="text-white" />
+                            </div>
+                        )}
+                        <h1 className="text-2xl font-black text-slate-800 text-center leading-tight">
+                            {settings?.nama_rs || 'RSUD Bendan'}
+                        </h1>
+                        <p className="text-[#137fec] font-extrabold text-xs mt-2 uppercase tracking-[0.3em]">
+                            {settings?.nama_aplikasi || 'PINTAR MR'}
+                        </p>
                     </div>
 
                     {/* Form */}
                     <form onSubmit={handleLogin} className="space-y-4">
                         <div>
-                            <label className="block text-sm font-medium text-slate-600 mb-1.5">Email</label>
+                            <label className="block text-sm font-bold text-slate-600 mb-1.5">Email</label>
                             <input
                                 type="email"
                                 value={email}
                                 onChange={e => setEmail(e.target.value)}
                                 placeholder="nama@rsud.go.id"
                                 required
-                                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-[#137fec]/40 focus:border-[#137fec] transition-all"
+                                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-[#137fec]/40 focus:border-[#137fec] transition-all shadow-sm"
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-slate-600 mb-1.5">Kata Sandi</label>
+                            <label className="block text-sm font-bold text-slate-600 mb-1.5">Kata Sandi</label>
                             <div className="relative">
                                 <input
                                     type={showPassword ? 'text' : 'password'}
@@ -66,7 +78,7 @@ export default function LoginPage() {
                                     onChange={e => setPassword(e.target.value)}
                                     placeholder="••••••••"
                                     required
-                                    className="w-full px-4 py-3 pr-12 bg-white border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-[#137fec]/40 focus:border-[#137fec] transition-all"
+                                    className="w-full px-4 py-3 pr-12 bg-white border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-[#137fec]/40 focus:border-[#137fec] transition-all shadow-sm"
                                 />
                                 <button
                                     type="button"
@@ -87,18 +99,30 @@ export default function LoginPage() {
                         <button
                             type="submit"
                             disabled={loading}
-                            className="w-full py-3 bg-[#137fec] hover:bg-[#0f63ba] text-white font-semibold rounded-xl text-sm transition-all shadow-lg shadow-blue-500/20 disabled:opacity-60 flex items-center justify-center space-x-2"
+                            className="w-full py-3.5 bg-[#137fec] hover:bg-[#0f63ba] text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-blue-500/20 disabled:opacity-60 flex items-center justify-center space-x-2 active:scale-95"
                         >
-                            {loading ? <><Loader2 size={18} className="animate-spin" /><span>Masuk...</span></> : <span>Masuk</span>}
+                            {loading ? <><Loader2 size={18} className="animate-spin" /><span>Memverifikasi...</span></> : <span>Masuk ke Dashboard</span>}
                         </button>
                     </form>
 
-                    <p className="text-center text-slate-400 text-xs mt-6">
-                        &copy; 2026 RSUD · Sistem Manajemen Risiko Terintegrasi
+                    <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col items-center">
+                        <p className="text-slate-400 text-[11px] mb-3 font-medium italic">Butuh bantuan akses?</p>
+                        <a
+                            href="https://wa.me/6285726112001?text=Halo%20Admin%2C%20saya%20butuh%20bantuan%20untuk%20login%20PINTAR%20MR"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center space-x-2 px-6 py-2.5 bg-emerald-50 text-emerald-600 rounded-full text-xs font-black hover:bg-emerald-600 hover:text-white transition-all duration-300 border border-emerald-200/50 shadow-sm"
+                        >
+                            <MessageCircle size={14} />
+                            <span>Hubungi Admin via WhatsApp</span>
+                        </a>
+                    </div>
+
+                    <p className="text-center text-slate-400 text-[9px] mt-8 px-4 leading-relaxed font-semibold uppercase tracking-widest opacity-60">
+                        Pintar-MR@2026. Mukhsin Hadi. All right Reserved
                     </p>
                 </div>
             </div>
         </div>
     );
-
 }

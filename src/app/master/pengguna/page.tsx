@@ -6,6 +6,7 @@ import { PageHeader, ScoreCard, TopActionBar, FilterBar } from '@/components/Sha
 import DataTable, { type Column } from '@/components/DataTable';
 import { Plus, Users, Shield, UserCheck, Save, X, Loader2, Download, Upload } from 'lucide-react';
 import { downloadTemplate, importFromExcel, exportToExcel, type ExcelColumn } from '@/lib/excelUtils';
+import { useAppSettings } from '@/hooks/useAppSettings';
 
 interface Profile {
     id: string;
@@ -219,9 +220,10 @@ export default function MasterPenggunaPage() {
         { key: 'created_at', label: 'Dibuat', render: r => new Date(r.created_at).toLocaleDateString('id-ID') },
     ];
 
+    const { settings } = useAppSettings();
     return (
         <div>
-            <PageHeader title="Manajemen Pengguna" subtitle="Kelola akun dan hak akses pengguna sistem ManRisk RS." />
+            <PageHeader title="Manajemen Pengguna" subtitle={`Kelola akun dan hak akses pengguna sistem ${settings?.nama_aplikasi || 'ManRisk RS'}.`} />
             <div className="grid grid-cols-2 xl:grid-cols-4 gap-5 mb-8">
                 <ScoreCard icon={<Users size={22} className="text-[#137fec]" />} title="Total Pengguna" value={data.length} colorClass="bg-blue-50 border-blue-100" />
                 <ScoreCard icon={<Shield size={22} className="text-rose-500" />} title="Admin" value={data.filter(d => d.role === 'admin').length} colorClass="bg-rose-50 border-rose-100" />

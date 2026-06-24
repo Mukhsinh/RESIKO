@@ -176,3 +176,30 @@ WITH CHECK ( unit_kerja_id = (SELECT unit_kerja_id FROM public.profiles WHERE id
 
 CREATE POLICY user_unit_delete_swot_inventarisasi ON public.swot_inventarisasi 
 FOR DELETE TO authenticated USING ( unit_kerja_id = (SELECT unit_kerja_id FROM public.profiles WHERE id = auth.uid()) );
+
+-- 8. Tabel app_settings
+CREATE TABLE IF NOT EXISTS public.app_settings (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    nama_aplikasi TEXT DEFAULT 'ManRisk RS',
+    nama_rs TEXT,
+    alamat TEXT,
+    kota TEXT,
+    telepon TEXT,
+    email TEXT,
+    website TEXT,
+    logo_url TEXT,
+    warna_primer TEXT DEFAULT '#2563EB',
+    tagline TEXT,
+    kepala_rs TEXT,
+    nip_kepala TEXT,
+    footer TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY superadmin_all_app_settings ON public.app_settings 
+FOR ALL TO authenticated USING ( (SELECT role FROM public.profiles WHERE id = auth.uid()) = 'superadmin' );
+
+CREATE POLICY view_app_settings ON public.app_settings 
+FOR SELECT TO authenticated USING (true);

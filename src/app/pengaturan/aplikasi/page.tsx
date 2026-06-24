@@ -6,6 +6,7 @@ import { Save, Loader2, Building2, Phone, Mail, Globe, MapPin, User, Tag, AlignL
 
 interface AppSettings {
     id?: string;
+    nama_aplikasi: string;
     nama_rs: string;
     alamat: string;
     kota: string;
@@ -21,6 +22,7 @@ interface AppSettings {
 }
 
 const DEFAULT: AppSettings = {
+    nama_aplikasi: '',
     nama_rs: '',
     alamat: '',
     kota: '',
@@ -47,6 +49,7 @@ export default function PengaturanAplikasiPage() {
             if (data) {
                 setSettingId(data.id);
                 setForm({
+                    nama_aplikasi: data.nama_aplikasi ?? '',
                     nama_rs: data.nama_rs ?? '',
                     alamat: data.alamat ?? '',
                     kota: data.kota ?? '',
@@ -91,7 +94,11 @@ export default function PengaturanAplikasiPage() {
                 if (!error && res.data) setSettingId(res.data.id);
             }
             if (error) { alert('Gagal menyimpan: ' + error.message); }
-            else { setSaved(true); setTimeout(() => setSaved(false), 3000); }
+            else {
+                localStorage.removeItem('app_settings_cache'); // Force refresh cache
+                setSaved(true);
+                setTimeout(() => setSaved(false), 3000);
+            }
         } finally { setSaving(false); }
     };
 
@@ -112,11 +119,16 @@ export default function PengaturanAplikasiPage() {
                 {/* Identitas RS */}
                 <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
                     <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wide mb-5 flex items-center gap-2">
-                        <Building2 size={16} className="text-blue-500" /> Identitas Rumah Sakit
+                        <Building2 size={16} className="text-blue-500" /> Identitas Aplikasi & Instansi
                     </h2>
                     <div className="space-y-4">
                         <div>
-                            <label className="form-label">Nama Rumah Sakit *</label>
+                            <label className="form-label font-semibold text-blue-600">Nama Aplikasi *</label>
+                            <input type="text" className="form-input w-full border-blue-100 focus:border-blue-400" value={form.nama_aplikasi} onChange={e => f('nama_aplikasi', e.target.value)} placeholder="e.g. ManRisk RS" />
+                            <p className="text-[10px] text-slate-400 mt-1 italic">Nama ini akan muncul di halaman login dan bagian atas sidebar.</p>
+                        </div>
+                        <div className="pt-2 border-t border-slate-50">
+                            <label className="form-label">Nama Rumah Sakit / Instansi *</label>
                             <input type="text" className="form-input w-full" value={form.nama_rs} onChange={e => f('nama_rs', e.target.value)} placeholder="e.g. RSUD dr. Soetomo" />
                         </div>
                         <div>
