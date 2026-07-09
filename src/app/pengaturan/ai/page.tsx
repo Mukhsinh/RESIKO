@@ -22,7 +22,7 @@ export default function PengaturanAIPage() {
     const [saved, setSaved] = useState(false);
 
     useEffect(() => {
-        supabase.from('pengaturan_ai').select('*').limit(1).single().then(({ data }) => {
+        supabase.from('pengaturan_ai').select('*').limit(1).single().then(({ data }: { data: any }) => {
             if (data) {
                 const d = data as PengaturanAI;
                 setConfig(d);

@@ -1,16 +1,36 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SERVICE_ROLE_KEY!,
-    {
-        auth: {
-            autoRefreshToken: false,
-            persistSession: false
+let _supabaseAdminInstance: ReturnType<typeof createClient> | null = null;
+
+function getSupabaseAdmin() {
+    if (!_supabaseAdminInstance) {
+        const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const key = process.env.NEXT_PUBLIC_SERVICE_ROLE_KEY;
+        if (!url || !key) {
+            throw new Error('Supabase URL atau Service Role Key belum dikonfigurasi.');
         }
+        _supabaseAdminInstance = createClient(url, key, {
+            auth: {
+                autoRefreshToken: false,
+                persistSession: false
+            }
+        });
     }
-);
+    return _supabaseAdminInstance;
+}
+
+const supabaseAdmin = new Proxy({} as any, {
+    get(target, prop, receiver) {
+        const instance = getSupabaseAdmin();
+        const value = Reflect.get(instance, prop, receiver);
+        if (typeof value === 'function') {
+            return value.bind(instance);
+        }
+        return value;
+    }
+}) as any;
+
 
 export async function POST(req: Request) {
     try {

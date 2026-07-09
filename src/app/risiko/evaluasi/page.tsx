@@ -300,8 +300,8 @@ export default function EvaluasiRisikoPage() {
     useEffect(() => { fetchData(); }, [fetchData]);
 
     useEffect(() => {
-        supabase.from('unit_kerja').select('id, nama_unit').then(({ data }) => setUnits((data ?? []) as WorkUnit[]));
-        supabase.from('risk_inputs').select('id, nama_risiko, kode_risiko, nama_unit_kerja_id').then(({ data }) => setRisikoList((data ?? []) as RisikoLinked[]));
+        supabase.from('unit_kerja').select('id, nama_unit').then(({ data }: { data: any }) => setUnits((data ?? []) as WorkUnit[]));
+        supabase.from('risk_inputs').select('id, nama_risiko, kode_risiko, nama_unit_kerja_id').then(({ data }: { data: any }) => setRisikoList((data ?? []) as RisikoLinked[]));
     }, []);
 
     const byStatus = {

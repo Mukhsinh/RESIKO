@@ -45,7 +45,7 @@ export default function PengaturanAplikasiPage() {
     const [saved, setSaved] = useState(false);
 
     useEffect(() => {
-        supabase.from('app_settings').select('*').limit(1).single().then(({ data }) => {
+        supabase.from('app_settings').select('*').limit(1).single().then(({ data }: { data: any }) => {
             if (data) {
                 setSettingId(data.id);
                 setForm({

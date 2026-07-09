@@ -122,7 +122,7 @@ export default function RiskRegisterPage() {
     useEffect(() => { fetchData(); }, [fetchData]);
 
     useEffect(() => {
-        supabase.from('unit_kerja').select('id, nama_unit').then(({ data }) => setUnits((data ?? []) as WorkUnit[]));
+        supabase.from('unit_kerja').select('id, nama_unit').then(({ data }: { data: any }) => setUnits((data ?? []) as WorkUnit[]));
     }, []);
 
     const filtered = rows.filter(d => {

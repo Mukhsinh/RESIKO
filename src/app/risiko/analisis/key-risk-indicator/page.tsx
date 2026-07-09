@@ -311,9 +311,9 @@ export default function KeyRiskIndicatorPage() {
     useEffect(() => { fetchData(); }, [fetchData]);
 
     useEffect(() => {
-        supabase.from('unit_kerja').select('id, nama_unit').then(({ data }) =>
+        supabase.from('unit_kerja').select('id, nama_unit').then(({ data }: { data: any }) =>
             setUnits((data ?? []).map((u: any) => ({ id: u.id, name: u.nama_unit }))));
-        supabase.from('risk_inputs').select('id, kode_risiko, nama_risiko').then(({ data }) =>
+        supabase.from('risk_inputs').select('id, kode_risiko, nama_risiko').then(({ data }: { data: any }) =>
             setRiskInputs((data ?? []) as RiskInputOption[]));
     }, []);
 

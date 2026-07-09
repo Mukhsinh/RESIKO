@@ -33,7 +33,7 @@ export default function TOWSPage() {
     const [savedCat, setSavedCat] = useState<TowsCategory | null>(null);
 
     useEffect(() => {
-        supabase.from('master_work_units').select('id, name').then(({ data: u, error }) => {
+        supabase.from('master_work_units').select('id, name').then(({ data: u, error }: { data: any; error: any }) => {
             if (error) {
                 console.error('Error fetching units:', error);
                 return;
@@ -66,7 +66,7 @@ export default function TOWSPage() {
                         ST: [],
                         WT: []
                     };
-                    data.forEach(item => {
+                    data.forEach((item: any) => {
                         if (item.tipe_strategi && grouped[item.tipe_strategi as TowsCategory]) {
                             grouped[item.tipe_strategi as TowsCategory].push({
                                 id: item.id,

@@ -1,27 +1,47 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
 const isBrowser = typeof window !== 'undefined';
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    auth: {
-        storage: isBrowser ? {
-            getItem: (key) => {
-                const match = document.cookie.match(new RegExp('(^| )' + key + '=([^;]+)'));
-                return match ? decodeURIComponent(match[2]) : null;
-            },
-            setItem: (key, value) => {
-                document.cookie = `${key}=${encodeURIComponent(value)}; path=/; max-age=31536000; SameSite=Lax`;
-            },
-            removeItem: (key) => {
-                document.cookie = `${key}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+let _supabaseInstance: any = null;
+
+function getSupabaseInstance() {
+    if (!_supabaseInstance) {
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        if (!supabaseUrl || !supabaseAnonKey) {
+            throw new Error('Supabase URL atau Anon Key belum dikonfigurasi.');
+        }
+        _supabaseInstance = createClient(supabaseUrl, supabaseAnonKey, {
+            auth: {
+                storage: isBrowser ? {
+                    getItem: (key) => {
+                        const match = document.cookie.match(new RegExp('(^| )' + key + '=([^;]+)'));
+                        return match ? decodeURIComponent(match[2]) : null;
+                    },
+                    setItem: (key, value) => {
+                        document.cookie = `${key}=${encodeURIComponent(value)}; path=/; max-age=31536000; SameSite=Lax`;
+                    },
+                    removeItem: (key) => {
+                        document.cookie = `${key}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+                    }
+                } : undefined,
+                storageKey: 'sb-access-token',
             }
-        } : undefined,
-        storageKey: 'sb-access-token',
+        });
     }
-});
+    return _supabaseInstance;
+}
+
+export const supabase = new Proxy({} as any, {
+    get(target, prop, receiver) {
+        const instance = getSupabaseInstance();
+        const value = Reflect.get(instance, prop, receiver);
+        if (typeof value === 'function') {
+            return value.bind(instance);
+        }
+        return value;
+    }
+}) as any;
 
 export type UserRole = 'superadmin' | 'user_unit';
 

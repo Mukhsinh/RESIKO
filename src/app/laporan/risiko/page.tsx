@@ -20,7 +20,7 @@ export default function LaporanRisikoPage() {
         try {
             let q = supabase.from('manajemen_risiko').select('*, unit_kerja(nama_unit)').order('skor_risiko', { ascending: false });
             if (year) q = q.eq('tahun', Number(year));
-            q.then(({ data: rows, error }) => {
+            q.then(({ data: rows, error }: { data: any; error: any }) => {
                 if (error) {
                     console.error('Error fetching laporan risiko:', error);
                     setData([]);

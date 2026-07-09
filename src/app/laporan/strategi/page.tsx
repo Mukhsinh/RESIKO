@@ -35,7 +35,7 @@ export default function LaporanStrategiPage() {
         try {
             let q = supabase.from('manajemen_strategi').select('*, unit_kerja(nama_unit)').order('unit_kerja_id');
             if (year) q = q.eq('tahun', Number(year));
-            q.then(({ data: rows, error }) => {
+            q.then(({ data: rows, error }: { data: any; error: any }) => {
                 if (error) {
                     console.error('Error fetching laporan strategi:', error);
                     setData([]);

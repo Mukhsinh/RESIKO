@@ -70,8 +70,8 @@ export default function PenangananRisikoPage() {
 
     useEffect(() => {
         fetchData();
-        supabase.from('unit_kerja').select('id, nama_unit').then(({ data }) => setUnits(data || []));
-        supabase.from('manajemen_risiko').select('*').then(({ data }) => setRisikoList(data || []));
+        supabase.from('unit_kerja').select('id, nama_unit').then(({ data }: { data: any }) => setUnits(data || []));
+        supabase.from('manajemen_risiko').select('*').then(({ data }: { data: any }) => setRisikoList(data || []));
     }, [fetchData]);
 
     const filtered = data.filter(d =>

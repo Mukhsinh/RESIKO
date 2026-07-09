@@ -8,7 +8,7 @@ export default function AppFooter() {
 
     useEffect(() => {
         supabase.from('app_settings').select('footer').limit(1).single()
-            .then(({ data }) => {
+            .then(({ data }: { data: any }) => {
                 if (data && data.footer) {
                     setFooterText(data.footer);
                 }

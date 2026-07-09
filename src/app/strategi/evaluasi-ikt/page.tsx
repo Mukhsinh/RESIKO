@@ -83,6 +83,7 @@ export default function EvaluasiIKTPage() {
     const [evalForm, setEvalForm] = useState<EvalForm>(defaultEvalForm);
 
     const [saving, setSaving] = useState(false);
+    const [hasUnitKerjaId, setHasUnitKerjaId] = useState<boolean | null>(null);
 
     // Sync unit filter for managers
     useEffect(() => {
@@ -91,21 +92,35 @@ export default function EvaluasiIKTPage() {
         }
     }, [profile]);
 
+    // Probe if unit_kerja_id exists in indikator_kinerja_utama
+    useEffect(() => {
+        supabase.from('indikator_kinerja_utama').select('unit_kerja_id').limit(1)
+            .then(({ error }: { error: any }) => {
+                const exists = !error || (error.code !== '42703' && error.code !== 'PGRST100' && error.code !== '42883');
+                setHasUnitKerjaId(exists);
+            });
+    }, []);
+
     // Fetch units list
     useEffect(() => {
-        supabase.from('unit_kerja').select('id, nama_unit').order('nama_unit').then(({ data: u }) => {
+        supabase.from('unit_kerja').select('id, nama_unit').order('nama_unit').then(({ data: u }: { data: any }) => {
             if (u) setUnits(u);
         });
     }, []);
 
     const fetchData = useCallback(async () => {
+        if (hasUnitKerjaId === null) return;
         setLoading(true);
         try {
-            let query = supabase.from('indikator_kinerja_utama').select('*, unit_kerja(nama_unit)').order('created_at', { ascending: false });
+            let selectFields = hasUnitKerjaId ? '*, unit_kerja(nama_unit)' : '*';
+            let query = supabase.from('indikator_kinerja_utama').select(selectFields).order('created_at', { ascending: false });
             if (year) query = query.eq('target_tahun', Number(year));
-            const unitToFilter = profile?.role === 'user_unit' ? profile.unit_kerja_id : (filterUnit === 'all' ? null : filterUnit);
-            if (unitToFilter) {
-                query = query.eq('unit_kerja_id', unitToFilter);
+
+            if (hasUnitKerjaId) {
+                const unitToFilter = profile?.role === 'user_unit' ? profile.unit_kerja_id : (filterUnit === 'all' ? null : filterUnit);
+                if (unitToFilter) {
+                    query = query.eq('unit_kerja_id', unitToFilter);
+                }
             }
             const { data: rows, error } = await query;
             if (error) {
@@ -120,30 +135,38 @@ export default function EvaluasiIKTPage() {
         } finally {
             setLoading(false);
         }
-    }, [year, filterUnit, profile]);
+    }, [year, filterUnit, profile, hasUnitKerjaId]);
 
     const fetchAllIKT = useCallback(async () => {
+        if (hasUnitKerjaId === null) return;
         try {
+            let selectFields = hasUnitKerjaId
+                ? 'id, indikator, target_tahun, target_nilai, satuan, pic, unit_kerja_id'
+                : 'id, indikator, target_tahun, target_nilai, satuan, pic';
             let query = supabase
                 .from('indikator_kinerja_utama')
-                .select('id, indikator, target_tahun, target_nilai, satuan, pic, unit_kerja_id')
+                .select(selectFields)
                 .order('target_tahun', { ascending: false });
 
-            const unitToFilter = profile?.role === 'user_unit' ? profile.unit_kerja_id : (filterUnit === 'all' ? null : filterUnit);
-            if (unitToFilter) {
-                query = query.eq('unit_kerja_id', unitToFilter);
+            if (hasUnitKerjaId) {
+                const unitToFilter = profile?.role === 'user_unit' ? profile.unit_kerja_id : (filterUnit === 'all' ? null : filterUnit);
+                if (unitToFilter) {
+                    query = query.eq('unit_kerja_id', unitToFilter);
+                }
             }
             const { data: rows } = await query;
             setAllIKT((rows as IKTEvaluasi[]) ?? []);
         } catch (err) {
             console.error('Error fetching all IKT:', err);
         }
-    }, [filterUnit, profile]);
+    }, [filterUnit, profile, hasUnitKerjaId]);
 
     useEffect(() => {
-        fetchData();
-        fetchAllIKT();
-    }, [fetchData, fetchAllIKT]);
+        if (hasUnitKerjaId !== null) {
+            fetchData();
+            fetchAllIKT();
+        }
+    }, [fetchData, fetchAllIKT, hasUnitKerjaId]);
 
     const filtered = data.filter(d =>
         (d.indikator || '').toLowerCase().includes(search.toLowerCase()) ||

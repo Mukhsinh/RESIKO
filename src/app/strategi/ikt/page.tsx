@@ -69,6 +69,7 @@ export default function IKTPage() {
     const [editId, setEditId] = useState<string | null>(null);
     const [form, setForm] = useState<Form>(defaultForm);
     const [saving, setSaving] = useState(false);
+    const [hasUnitKerjaId, setHasUnitKerjaId] = useState<boolean | null>(null);
 
     // Sync unit filter for managers
     useEffect(() => {
@@ -77,22 +78,34 @@ export default function IKTPage() {
         }
     }, [profile]);
 
+    // Probe if unit_kerja_id exists in indikator_kinerja_utama
+    useEffect(() => {
+        supabase.from('indikator_kinerja_utama').select('unit_kerja_id').limit(1)
+            .then(({ error }: { error: any }) => {
+                const exists = !error || (error.code !== '42703' && error.code !== 'PGRST100' && error.code !== '42883');
+                setHasUnitKerjaId(exists);
+            });
+    }, []);
+
     // Fetch units list
     useEffect(() => {
-        supabase.from('unit_kerja').select('id, nama_unit').order('nama_unit').then(({ data: u }) => {
+        supabase.from('unit_kerja').select('id, nama_unit').order('nama_unit').then(({ data: u }: { data: any }) => {
             if (u) setUnits(u);
         });
     }, []);
 
     const fetchData = useCallback(async () => {
+        if (hasUnitKerjaId === null) return;
         setLoading(true);
         try {
-            let query = supabase.from('indikator_kinerja_utama').select('*, unit_kerja(nama_unit)').order('created_at', { ascending: false });
+            const selectFields = hasUnitKerjaId ? '*, unit_kerja(nama_unit)' : '*';
+            let query = supabase.from('indikator_kinerja_utama').select(selectFields).order('created_at', { ascending: false });
             if (year) query = query.eq('target_tahun', Number(year));
-            // Try to filter by unit_kerja_id if column exists
-            const unitToFilter = profile?.role === 'user_unit' ? profile.unit_kerja_id : (filterUnit === 'all' ? null : filterUnit);
-            if (unitToFilter) {
-                query = query.eq('unit_kerja_id', unitToFilter);
+            if (hasUnitKerjaId) {
+                const unitToFilter = profile?.role === 'user_unit' ? profile.unit_kerja_id : (filterUnit === 'all' ? null : filterUnit);
+                if (unitToFilter) {
+                    query = query.eq('unit_kerja_id', unitToFilter);
+                }
             }
             const { data: rows, error } = await query;
             if (error) {
@@ -107,19 +120,20 @@ export default function IKTPage() {
         } finally {
             setLoading(false);
         }
-    }, [year, filterUnit, profile]);
+    }, [year, filterUnit, profile, hasUnitKerjaId]);
 
     useEffect(() => {
+        if (hasUnitKerjaId === null) return;
         fetchData();
-        supabase.from('rencana_strategis').select('id, nama_rencana').then(({ data: r, error }) => {
+        supabase.from('rencana_strategis').select('id, nama_rencana').then(({ data: r, error }: { data: any; error: any }) => {
             if (error) console.error('Error fetching renstra:', error);
             setRenstraList(r ?? []);
         });
-        supabase.from('sasaran_strategi').select('id, sasaran').then(({ data: s, error }) => {
+        supabase.from('sasaran_strategi').select('id, sasaran').then(({ data: s, error }: { data: any; error: any }) => {
             if (error) console.error('Error fetching sasaran:', error);
             setSasaranList(s ?? []);
         });
-    }, [fetchData]);
+    }, [fetchData, hasUnitKerjaId]);
 
     const filtered = data.filter(d =>
         (d.indikator || '').toLowerCase().includes(search.toLowerCase()) ||
@@ -162,12 +176,15 @@ export default function IKTPage() {
         e.preventDefault();
         setSaving(true);
         try {
-            const payload = {
+            const payload: any = {
                 ...form,
                 baseline_nilai: form.baseline_nilai ? Number(form.baseline_nilai) : null,
                 target_nilai: form.target_nilai ? Number(form.target_nilai) : null,
                 sasaran_strategi_id: form.sasaran_strategi_id || null,
             };
+            if (!hasUnitKerjaId) {
+                delete payload.unit_kerja_id;
+            }
             let result;
             if (editId) {
                 result = await supabase.from('indikator_kinerja_utama').update(payload).eq('id', editId);

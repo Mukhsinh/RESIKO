@@ -116,14 +116,14 @@ export default function IdentifikasiRisikoPage() {
 
     useEffect(() => {
         fetchData();
-        supabase.from('master_work_units').select('id, name').then(({ data: u, error }) => {
+        supabase.from('master_work_units').select('id, name').then(({ data: u, error }: { data: any; error: any }) => {
             if (error) {
                 console.error('Error fetching units:', error);
                 return;
             }
-            setUnits((u || []).map(item => ({ id: item.id, nama_unit: item.name })));
+            setUnits((u || []).map((item: any) => ({ id: item.id, nama_unit: item.name })));
         });
-        supabase.from('master_risk_categories').select('id, name').then(({ data: c, error }) => {
+        supabase.from('master_risk_categories').select('id, name').then(({ data: c, error }: { data: any; error: any }) => {
             if (error) console.error('Error fetching categories:', error);
             setCategories(c ?? []);
         });
@@ -145,7 +145,7 @@ export default function IdentifikasiRisikoPage() {
                 .neq('sasaran_strategi', '');
 
             if (!error && data) {
-                const uniqueSasaran = Array.from(new Set(data.map(d => d.sasaran_strategi).filter(s => s.trim() !== '')));
+                const uniqueSasaran = Array.from(new Set((data as any[]).map((d: any) => d.sasaran_strategi).filter((s: any) => s.trim() !== ''))) as string[];
                 setSasaranOptions(uniqueSasaran);
             }
         };

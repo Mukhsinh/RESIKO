@@ -86,7 +86,7 @@ export default function CascadingKPIPage() {
 
     useEffect(() => {
         fetchData();
-        supabase.from('unit_kerja').select('id, nama_unit').order('nama_unit').then(({ data: u }) => setUnits(u ?? []));
+        supabase.from('unit_kerja').select('id, nama_unit').order('nama_unit').then(({ data: u }: { data: any }) => setUnits(u ?? []));
     }, [fetchData]);
 
     // Fetch sasaran strategis dari TOWS ketika unit_kerja atau tahun berubah di form
@@ -96,8 +96,8 @@ export default function CascadingKPIPage() {
             .select('sasaran_strategi')
             .eq('unit_kerja_id', form.unit_kerja_id)
             .eq('tahun', form.tahun)
-            .then(({ data: towsData }) => {
-                const sasarans = towsData?.map(t => t.sasaran_strategi).filter(s => s && s.trim() !== '') || [];
+            .then(({ data: towsData }: { data: any }) => {
+                const sasarans = towsData?.map((t: any) => t.sasaran_strategi).filter((s: any) => s && s.trim() !== '') || [];
                 setTowsSasarans(Array.from(new Set(sasarans))); // remove duplicates
             });
     }, [form.unit_kerja_id, form.tahun]);

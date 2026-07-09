@@ -69,7 +69,7 @@ export default function MonitoringKPIPage() {
 
     useEffect(() => {
         fetchData();
-        supabase.from('unit_kerja').select('*').then(({ data: u, error }) => {
+        supabase.from('unit_kerja').select('*').then(({ data: u, error }: { data: any; error: any }) => {
             if (error) console.error('Error fetching units:', error);
             setUnits(u ?? []);
         });
@@ -85,7 +85,7 @@ export default function MonitoringKPIPage() {
             .select('id, kpi, sasaran_strategis, target')
             .eq('unit_kerja_id', form.unit_kerja_id)
             .eq('tahun', form.tahun)
-            .then(({ data: cData }) => {
+            .then(({ data: cData }: { data: any }) => {
                 setCascadingData(cData ?? []);
             });
     }, [form.unit_kerja_id, form.tahun]);

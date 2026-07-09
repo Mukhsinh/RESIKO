@@ -39,7 +39,7 @@ export default function DashboardPage() {
 
             const { data: yearsData } = await supabase.from('tahun_anggaran').select('tahun').order('tahun', { ascending: false });
             if (yearsData && yearsData.length > 0) {
-                setYears(yearsData.map(y => y.tahun));
+                setYears(yearsData.map((y: any) => y.tahun));
             } else {
                 // Return fallback years if table is empty
                 setYears([2024, 2025, 2026, 2027]);

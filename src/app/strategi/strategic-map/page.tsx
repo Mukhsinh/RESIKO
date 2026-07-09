@@ -24,7 +24,7 @@ export default function StrategicMapPage() {
         supabase.from('unit_kerja')
             .select('id, nama_unit')
             .order('nama_unit')
-            .then(({ data }) => setUnits(data || []));
+            .then(({ data }: { data: any }) => setUnits(data || []));
     }, []);
 
     useEffect(() => {
@@ -53,7 +53,7 @@ export default function StrategicMapPage() {
                     // Filter unik berdasarkan judul sasaran dan perspektif
                     const uniqueMap = new Map<string, StrategicObjective>();
 
-                    data.forEach(item => {
+                    data.forEach((item: any) => {
                         if (item.sasaran_strategis && item.perspektif) {
                             const key = `${item.perspektif}-${item.sasaran_strategis}`;
                             // Pemetaan nama perspektif indonesia ke inggris untuk css

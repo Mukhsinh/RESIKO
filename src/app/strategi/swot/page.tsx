@@ -35,7 +35,7 @@ export default function SWOTPage() {
     const [savedCat, setSavedCat] = useState<SwotCategory | null>(null);
 
     useEffect(() => {
-        supabase.from('master_work_units').select('id, name').then(({ data: u, error }) => {
+        supabase.from('master_work_units').select('id, name').then(({ data: u, error }: { data: any; error: any }) => {
             if (error) {
                 console.error('Error fetching units:', error);
                 return;
@@ -43,7 +43,7 @@ export default function SWOTPage() {
             setUnits(u ?? []);
             if (u && u.length) {
                 if (profile?.role === 'user_unit' && profile.unit_kerja_name) {
-                    const matchedUnit = u.find(unit => unit.name.toLowerCase() === profile.unit_kerja_name?.toLowerCase());
+                    const matchedUnit = u.find((unit: any) => unit.name.toLowerCase() === profile.unit_kerja_name?.toLowerCase());
                     if (matchedUnit) {
                         setUnitId(matchedUnit.id);
                         return;
@@ -77,7 +77,7 @@ export default function SWOTPage() {
                         peluang: [],
                         ancaman: []
                     };
-                    data.forEach(item => {
+                    data.forEach((item: any) => {
                         const key = item.kategori === 'Kekuatan' ? 'kekuatan' :
                             item.kategori === 'Kelemahan' ? 'kelemahan' :
                                 item.kategori === 'Peluang' ? 'peluang' : 'ancaman';

@@ -274,9 +274,9 @@ export default function LossEventPage() {
     useEffect(() => { fetchData(); }, [fetchData]);
 
     useEffect(() => {
-        supabase.from('unit_kerja').select('id, nama_unit').then(({ data }) => setUnits((data ?? []) as WorkUnit[]));
-        supabase.from('risk_inputs').select('id, nama_risiko, kode_risiko').then(({ data }) => setRiskInputs((data ?? []) as RiskInput[]));
-        supabase.from('key_risk_indicators').select('id, nama_kri').then(({ data }) => setKriList((data ?? []) as KRIItem[]));
+        supabase.from('unit_kerja').select('id, nama_unit').then(({ data }: { data: any }) => setUnits((data ?? []) as WorkUnit[]));
+        supabase.from('risk_inputs').select('id, nama_risiko, kode_risiko').then(({ data }: { data: any }) => setRiskInputs((data ?? []) as RiskInput[]));
+        supabase.from('key_risk_indicators').select('id, nama_kri').then(({ data }: { data: any }) => setKriList((data ?? []) as KRIItem[]));
     }, []);
 
     const filtered = rows.filter(d => {

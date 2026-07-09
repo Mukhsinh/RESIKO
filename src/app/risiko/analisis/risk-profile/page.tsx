@@ -354,8 +354,8 @@ export default function RiskProfilePage() {
     }, [fetchData]);
 
     useEffect(() => {
-        supabase.from('unit_kerja').select('id, nama_unit').then(({ data }) => setUnits((data ?? []).map((u: any) => ({ id: u.id, name: u.nama_unit }))));
-        supabase.from('risk_inputs').select('id, kode_risiko, nama_risiko, nama_unit_kerja_id').then(({ data }) => setRiskInputs((data ?? []) as RiskInputOption[]));
+        supabase.from('unit_kerja').select('id, nama_unit').then(({ data }: { data: any }) => setUnits((data ?? []).map((u: any) => ({ id: u.id, name: u.nama_unit }))));
+        supabase.from('risk_inputs').select('id, kode_risiko, nama_risiko, nama_unit_kerja_id').then(({ data }: { data: any }) => setRiskInputs((data ?? []) as RiskInputOption[]));
     }, []);
 
     const filtered = rows.filter(d => {

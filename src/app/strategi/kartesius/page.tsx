@@ -34,13 +34,13 @@ export default function DiagramKartesiusPage() {
                     .eq('tahun', Number(selectedYear));
 
                 if (unitsData && swotData) {
-                    const mappedData = unitsData.map((unit, index) => {
-                        const unitSwots = swotData.filter(s => s.unit_kerja_id === unit.id);
+                    const mappedData = unitsData.map((unit: any, index: number) => {
+                        const unitSwots = swotData.filter((s: any) => s.unit_kerja_id === unit.id);
                         if (unitSwots.length === 0) return null;
 
                         const sumSkor = (kategori: string) =>
-                            unitSwots.filter(s => s.kategori === kategori)
-                                .reduce((acc, curr) => acc + (Number(curr.skor) || 0), 0);
+                            unitSwots.filter((s: any) => s.kategori === kategori)
+                                .reduce((acc: number, curr: any) => acc + (Number(curr.skor) || 0), 0);
 
                         const totalKekuatan = sumSkor('Kekuatan');
                         const totalKelemahan = sumSkor('Kelemahan');

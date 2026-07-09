@@ -252,10 +252,10 @@ export default function EarlyWarningSystemPage() {
     useEffect(() => { fetchData(); }, [fetchData]);
 
     useEffect(() => {
-        supabase.from('unit_kerja').select('id, nama_unit').then(({ data }) => setUnits((data ?? []) as WorkUnit[]));
+        supabase.from('unit_kerja').select('id, nama_unit').then(({ data }: { data: any }) => setUnits((data ?? []) as WorkUnit[]));
         supabase.from('key_risk_indicators')
             .select('id, nama_kri, nilai_aktual, batas_atas, batas_bawah, satuan, unit_kerja_id, unit_kerja(id, nama_unit)')
-            .then(({ data }) => setKriList((data ?? []) as unknown as KRIItem[]));
+            .then(({ data }: { data: any }) => setKriList((data ?? []) as unknown as KRIItem[]));
     }, []);
 
     const filtered = rows.filter(d => {
