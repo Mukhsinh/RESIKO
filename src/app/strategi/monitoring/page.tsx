@@ -6,6 +6,7 @@ import { PageHeader, ScoreCard, FilterBar, TopActionBar } from '@/components/Sha
 import DataTable, { type Column } from '@/components/DataTable';
 import FormInputAI from '@/components/FormInputAI';
 import { Plus, Download, Upload, FileText, TrendingUp, Target, CheckCircle2, Clock, Save, X, Loader2 } from 'lucide-react';
+import { useUserProfile } from '@/hooks/useUserProfile';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -22,22 +23,35 @@ interface FormData { tahun: number; unit_kerja_id: string; sasaran_strategis: st
 const defaultForm: FormData = { tahun: CURRENT_YEAR, unit_kerja_id: '', sasaran_strategis: '', kpi: '', target: '', realisasi: '' };
 
 export default function MonitoringKPIPage() {
+    const { profile } = useUserProfile();
     const [data, setData] = useState<ManajemenStrategi[]>([]);
     const [units, setUnits] = useState<UnitKerja[]>([]);
     const [cascadingData, setCascadingData] = useState<any[]>([]); // Data from Cascading KPI
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [year, setYear] = useState(String(CURRENT_YEAR));
+    const [filterUnit, setFilterUnit] = useState<string>('all');
     const [showModal, setShowModal] = useState(false);
     const [editId, setEditId] = useState<string | null>(null);
     const [form, setForm] = useState<FormData>(defaultForm);
     const [saving, setSaving] = useState(false);
+
+    // Sync unit filter for managers
+    useEffect(() => {
+        if (profile?.role === 'user_unit' && profile.unit_kerja_id) {
+            setFilterUnit(profile.unit_kerja_id);
+        }
+    }, [profile]);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
             let q = supabase.from('manajemen_strategi').select('*, unit_kerja(nama_unit)').order('created_at', { ascending: false });
             if (year) q = q.eq('tahun', Number(year));
+            const unitToFilter = profile?.role === 'user_unit' ? profile.unit_kerja_id : (filterUnit === 'all' ? null : filterUnit);
+            if (unitToFilter) {
+                q = q.eq('unit_kerja_id', unitToFilter);
+            }
             const { data: rows, error } = await q;
             if (error) {
                 console.error('Error fetching monitoring data:', error);
@@ -51,7 +65,7 @@ export default function MonitoringKPIPage() {
         } finally {
             setLoading(false);
         }
-    }, [year]);
+    }, [year, filterUnit, profile]);
 
     useEffect(() => {
         fetchData();
@@ -96,7 +110,15 @@ export default function MonitoringKPIPage() {
         return !isNaN(t) && !isNaN(r) && r >= t;
     }).length;
 
-    const openAdd = () => { setEditId(null); setForm(defaultForm); setShowModal(true); };
+    const openAdd = () => {
+        setEditId(null);
+        const newForm = { ...defaultForm };
+        if (profile?.role === 'user_unit' && profile.unit_kerja_id) {
+            newForm.unit_kerja_id = profile.unit_kerja_id;
+        }
+        setForm(newForm);
+        setShowModal(true);
+    };
     const openEdit = (row: ManajemenStrategi) => {
         setEditId(row.id);
         setForm({ tahun: row.tahun, unit_kerja_id: row.unit_kerja_id, sasaran_strategis: row.sasaran_strategis, kpi: row.kpi, target: row.target, realisasi: row.realisasi });
@@ -155,7 +177,21 @@ export default function MonitoringKPIPage() {
 
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
                 <TopActionBar
-                    filters={<FilterBar searchValue={search} onSearchChange={setSearch} searchPlaceholder="Cari sasaran / KPI..." yearValue={year} onYearChange={setYear} />}
+                    filters={
+                        <div className="flex flex-wrap items-center gap-3">
+                            <FilterBar searchValue={search} onSearchChange={setSearch} searchPlaceholder="Cari sasaran / KPI..." yearValue={year} onYearChange={setYear} />
+                            {profile?.role === 'user_unit' ? (
+                                <div className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold border border-slate-200">
+                                    {units.find(u => u.id === filterUnit)?.nama_unit || 'Unit Anda'}
+                                </div>
+                            ) : (
+                                <select className="form-input text-xs py-2 w-48" value={filterUnit} onChange={e => setFilterUnit(e.target.value)}>
+                                    <option value="all">Semua Unit Kerja</option>
+                                    {units.map(u => <option key={u.id} value={u.id}>{u.nama_unit}</option>)}
+                                </select>
+                            )}
+                        </div>
+                    }
                     actions={<>
                         <button className="btn-secondary"><Download size={15} /><span className="hidden sm:inline">Template</span></button>
                         <button className="btn-secondary"><Upload size={15} /><span className="hidden sm:inline">Import</span></button>
@@ -181,10 +217,16 @@ export default function MonitoringKPIPage() {
                                 </div>
                                 <div>
                                     <label className="form-label">Unit Kerja</label>
-                                    <select className="form-input" value={form.unit_kerja_id} onChange={e => setForm(f => ({ ...f, unit_kerja_id: e.target.value }))} required>
-                                        <option value="">-- Pilih Unit --</option>
-                                        {units.map(u => <option key={u.id} value={u.id}>{u.nama_unit}</option>)}
-                                    </select>
+                                    {profile?.role === 'user_unit' ? (
+                                        <div className="form-input bg-slate-100 text-slate-600 cursor-not-allowed">
+                                            {units.find(u => u.id === form.unit_kerja_id)?.nama_unit || 'Unit Kerja Anda'}
+                                        </div>
+                                    ) : (
+                                        <select className="form-input" value={form.unit_kerja_id} onChange={e => setForm(f => ({ ...f, unit_kerja_id: e.target.value }))} required>
+                                            <option value="">-- Pilih Unit --</option>
+                                            {units.map(u => <option key={u.id} value={u.id}>{u.nama_unit}</option>)}
+                                        </select>
+                                    )}
                                 </div>
                             </div>
 

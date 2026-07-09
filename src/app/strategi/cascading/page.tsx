@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { PageHeader, ScoreCard, FilterBar, TopActionBar } from '@/components/SharedUI';
 import DataTable, { type Column } from '@/components/DataTable';
 import { Plus, TrendingUp, Target, BarChart2, Layers, Save, X, Loader2, Download, FileText } from 'lucide-react';
+import { useUserProfile } from '@/hooks/useUserProfile';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -43,22 +44,35 @@ const PERSPEKTIF_COLORS: Record<string, string> = {
 };
 
 export default function CascadingKPIPage() {
+    const { profile } = useUserProfile();
     const [data, setData] = useState<CascadingKPI[]>([]);
     const [units, setUnits] = useState<{ id: string; nama_unit: string }[]>([]);
     const [towsSasarans, setTowsSasarans] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [year, setYear] = useState(String(CURRENT_YEAR));
+    const [filterUnit, setFilterUnit] = useState<string>('all');
     const [showModal, setShowModal] = useState(false);
     const [editId, setEditId] = useState<string | null>(null);
     const [form, setForm] = useState<Form>(defaultForm);
     const [saving, setSaving] = useState(false);
+
+    // Sync unit for managers
+    useEffect(() => {
+        if (profile?.role === 'user_unit' && profile.unit_kerja_id) {
+            setFilterUnit(profile.unit_kerja_id);
+        }
+    }, [profile]);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
             let q = supabase.from('cascading_kpi').select('*, unit_kerja(nama_unit)').order('created_at', { ascending: false });
             if (year) q = q.eq('tahun', Number(year));
+            const unitToFilter = profile?.role === 'user_unit' ? profile.unit_kerja_id : (filterUnit === 'all' ? null : filterUnit);
+            if (unitToFilter) {
+                q = q.eq('unit_kerja_id', unitToFilter);
+            }
             const { data: rows, error } = await q;
             if (error) throw error;
             setData((rows as any) ?? []);
@@ -68,11 +82,11 @@ export default function CascadingKPIPage() {
         } finally {
             setLoading(false);
         }
-    }, [year]);
+    }, [year, filterUnit, profile]);
 
     useEffect(() => {
         fetchData();
-        supabase.from('unit_kerja').select('*').then(({ data: u }) => setUnits(u ?? []));
+        supabase.from('unit_kerja').select('id, nama_unit').order('nama_unit').then(({ data: u }) => setUnits(u ?? []));
     }, [fetchData]);
 
     // Fetch sasaran strategis dari TOWS ketika unit_kerja atau tahun berubah di form
@@ -95,7 +109,15 @@ export default function CascadingKPIPage() {
 
     const totalBobot = data.reduce((s, d) => s + (d.bobot || 0), 0);
 
-    const openAdd = () => { setEditId(null); setForm(defaultForm); setShowModal(true); };
+    const openAdd = () => {
+        setEditId(null);
+        const newForm = { ...defaultForm };
+        if (profile?.role === 'user_unit' && profile.unit_kerja_id) {
+            newForm.unit_kerja_id = profile.unit_kerja_id;
+        }
+        setForm(newForm);
+        setShowModal(true);
+    };
     const openEdit = (row: CascadingKPI) => {
         setEditId(row.id);
         setForm({
@@ -157,7 +179,21 @@ export default function CascadingKPIPage() {
 
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
                 <TopActionBar
-                    filters={<FilterBar searchValue={search} onSearchChange={setSearch} searchPlaceholder="Cari sasaran / KPI..." yearValue={year} onYearChange={setYear} />}
+                    filters={
+                        <div className="flex flex-wrap items-center gap-3">
+                            <FilterBar searchValue={search} onSearchChange={setSearch} searchPlaceholder="Cari sasaran / KPI..." yearValue={year} onYearChange={setYear} />
+                            {profile?.role === 'user_unit' ? (
+                                <div className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold border border-slate-200">
+                                    {units.find(u => u.id === filterUnit)?.nama_unit || 'Unit Anda'}
+                                </div>
+                            ) : (
+                                <select className="form-input text-xs py-2 w-48" value={filterUnit} onChange={e => setFilterUnit(e.target.value)}>
+                                    <option value="all">Semua Unit Kerja</option>
+                                    {units.map(u => <option key={u.id} value={u.id}>{u.nama_unit}</option>)}
+                                </select>
+                            )}
+                        </div>
+                    }
                     actions={<>
                         <button className="btn-secondary"><Download size={15} /><span className="hidden sm:inline">Template</span></button>
                         <button className="btn-secondary"><FileText size={15} /><span className="hidden sm:inline">Export</span></button>
@@ -178,10 +214,16 @@ export default function CascadingKPIPage() {
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="form-label">Unit Kerja</label>
-                                    <select className="form-input" value={form.unit_kerja_id} onChange={e => setForm(f => ({ ...f, unit_kerja_id: e.target.value }))} required>
-                                        <option value="">-- Pilih Unit --</option>
-                                        {units.map(u => <option key={u.id} value={u.id}>{u.nama_unit}</option>)}
-                                    </select>
+                                    {profile?.role === 'user_unit' ? (
+                                        <div className="form-input bg-slate-100 text-slate-600 cursor-not-allowed">
+                                            {units.find(u => u.id === form.unit_kerja_id)?.nama_unit || 'Unit Kerja Anda'}
+                                        </div>
+                                    ) : (
+                                        <select className="form-input" value={form.unit_kerja_id} onChange={e => setForm(f => ({ ...f, unit_kerja_id: e.target.value }))} required>
+                                            <option value="">-- Pilih Unit --</option>
+                                            {units.map(u => <option key={u.id} value={u.id}>{u.nama_unit}</option>)}
+                                        </select>
+                                    )}
                                 </div>
                                 <div>
                                     <label className="form-label">Tahun</label>

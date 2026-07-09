@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { PageHeader } from '@/components/SharedUI';
 import FormInputAI from '@/components/FormInputAI';
 import { Layers, Zap, Target, Shield, AlertTriangle, Save, Loader2, Plus, Trash2, CheckCircle2 } from 'lucide-react';
+import { useUserProfile } from '@/hooks/useUserProfile';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -18,6 +19,7 @@ interface SwotItem {
 type SwotCategory = 'kekuatan' | 'kelemahan' | 'peluang' | 'ancaman';
 
 export default function SWOTPage() {
+    const { profile } = useUserProfile();
     const [units, setUnits] = useState<{ id: string; name: string }[]>([]);
     const [unitId, setUnitId] = useState('');
     const [year, setYear] = useState(String(CURRENT_YEAR));
@@ -39,9 +41,18 @@ export default function SWOTPage() {
                 return;
             }
             setUnits(u ?? []);
-            if (u && u.length) setUnitId(u[0].id);
+            if (u && u.length) {
+                if (profile?.role === 'user_unit' && profile.unit_kerja_name) {
+                    const matchedUnit = u.find(unit => unit.name.toLowerCase() === profile.unit_kerja_name?.toLowerCase());
+                    if (matchedUnit) {
+                        setUnitId(matchedUnit.id);
+                        return;
+                    }
+                }
+                setUnitId(u[0].id);
+            }
         });
-    }, []);
+    }, [profile]);
 
     useEffect(() => {
         if (!unitId) return;
@@ -165,9 +176,15 @@ export default function SWOTPage() {
                 subtitle="Identifikasi faktor internal & eksternal beserta bobot dan ranking untuk diagram kartesius."
                 actions={
                     <div className="flex gap-3 flex-wrap">
-                        <select className="form-input w-52" value={unitId} onChange={e => setUnitId(e.target.value)}>
-                            {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                        </select>
+                        {profile?.role === 'user_unit' ? (
+                            <div className="form-input w-52 bg-slate-100 text-slate-600 cursor-not-allowed">
+                                {units.find(u => u.id === unitId)?.name || 'Unit Kerja Anda'}
+                            </div>
+                        ) : (
+                            <select className="form-input w-52" value={unitId} onChange={e => setUnitId(e.target.value)}>
+                                {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                            </select>
+                        )}
                         <select className="form-input w-32" value={year} onChange={e => setYear(e.target.value)}>
                             {[CURRENT_YEAR + 1, CURRENT_YEAR, CURRENT_YEAR - 1].map(y => <option key={y} value={y}>{y}</option>)}
                         </select>

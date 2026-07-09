@@ -6,6 +6,7 @@ import { PageHeader, ScoreCard, FilterBar, TopActionBar } from '@/components/Sha
 import DataTable, { type Column } from '@/components/DataTable';
 import FormInputAI from '@/components/FormInputAI';
 import { Plus, Download, Upload, FileText, Calendar, Target, CheckCircle2, Clock, Save, X, Loader2 } from 'lucide-react';
+import { useUserProfile } from '@/hooks/useUserProfile';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -59,11 +60,13 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function RKTPage() {
+    const { profile } = useUserProfile();
     const [data, setData] = useState<RKT[]>([]);
     const [units, setUnits] = useState<{ id: string; nama_unit: string }[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [year, setYear] = useState(String(CURRENT_YEAR));
+    const [filterUnit, setFilterUnit] = useState<string>('all');
     const [showModal, setShowModal] = useState(false);
     const [editId, setEditId] = useState<string | null>(null);
     const [form, setForm] = useState<Form>(defaultForm);
@@ -104,12 +107,23 @@ export default function RKTPage() {
         if (unitData) setUnits(unitData);
     }, []);
 
+    // Sync unit filter for managers
+    useEffect(() => {
+        if (profile?.role === 'user_unit' && profile.unit_kerja_id) {
+            setFilterUnit(profile.unit_kerja_id);
+        }
+    }, [profile]);
+
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
             let query = supabase.from('rkt').select('*, unit_kerja(nama_unit), rencana_strategis(nama_rencana, misi_items(nomor))');
             if (year) {
                 query = query.eq('tahun', Number(year));
+            }
+            const unitToFilter = profile?.role === 'user_unit' ? profile.unit_kerja_id : (filterUnit === 'all' ? null : filterUnit);
+            if (unitToFilter) {
+                query = query.eq('unit_kerja_id', unitToFilter);
             }
             const { data: rows, error } = await query.order('created_at', { ascending: false });
 
@@ -125,7 +139,7 @@ export default function RKTPage() {
         } finally {
             setLoading(false);
         }
-    }, [year]);
+    }, [year, filterUnit, profile]);
 
     useEffect(() => {
         fetchUnits();
@@ -140,7 +154,15 @@ export default function RKTPage() {
 
     const selesai = data.filter(d => d.status === 'Selesai').length;
 
-    const openAdd = () => { setEditId(null); setForm(defaultForm); setShowModal(true); };
+    const openAdd = () => {
+        setEditId(null);
+        const newForm = { ...defaultForm };
+        if (profile?.role === 'user_unit' && profile.unit_kerja_id) {
+            newForm.unit_kerja_id = profile.unit_kerja_id;
+        }
+        setForm(newForm);
+        setShowModal(true);
+    };
     const openEdit = (row: RKT) => {
         setEditId(row.id);
         setForm({
@@ -245,7 +267,21 @@ export default function RKTPage() {
 
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
                 <TopActionBar
-                    filters={<FilterBar searchValue={search} onSearchChange={setSearch} searchPlaceholder="Cari program / kegiatan..." yearValue={year} onYearChange={setYear} />}
+                    filters={
+                        <div className="flex flex-wrap items-center gap-3">
+                            <FilterBar searchValue={search} onSearchChange={setSearch} searchPlaceholder="Cari program / kegiatan..." yearValue={year} onYearChange={setYear} />
+                            {profile?.role === 'user_unit' ? (
+                                <div className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold border border-slate-200">
+                                    {units.find(u => u.id === filterUnit)?.nama_unit || 'Unit Anda'}
+                                </div>
+                            ) : (
+                                <select className="form-input text-xs py-2 w-48" value={filterUnit} onChange={e => setFilterUnit(e.target.value)}>
+                                    <option value="all">Semua Unit Kerja</option>
+                                    {units.map(u => <option key={u.id} value={u.id}>{u.nama_unit}</option>)}
+                                </select>
+                            )}
+                        </div>
+                    }
                     actions={<>
                         <button className="btn-secondary"><Download size={15} /><span className="hidden sm:inline">Template</span></button>
                         <button className="btn-secondary"><Upload size={15} /><span className="hidden sm:inline">Import</span></button>
@@ -295,10 +331,16 @@ export default function RKTPage() {
                             <div className="grid grid-cols-3 gap-4">
                                 <div className="col-span-2">
                                     <label className="form-label flex gap-1">Unit Kerja <span className="text-red-500">*</span></label>
-                                    <select className="form-input" value={form.unit_kerja_id} onChange={e => setForm(f => ({ ...f, unit_kerja_id: e.target.value }))} required>
-                                        <option value="">-- Pilih Unit --</option>
-                                        {units.map(u => <option key={u.id} value={u.id}>{u.nama_unit}</option>)}
-                                    </select>
+                                    {profile?.role === 'user_unit' ? (
+                                        <div className="form-input bg-slate-100 text-slate-600 cursor-not-allowed">
+                                            {units.find(u => u.id === form.unit_kerja_id)?.nama_unit || 'Unit Kerja Anda'}
+                                        </div>
+                                    ) : (
+                                        <select className="form-input" value={form.unit_kerja_id} onChange={e => setForm(f => ({ ...f, unit_kerja_id: e.target.value }))} required>
+                                            <option value="">-- Pilih Unit --</option>
+                                            {units.map(u => <option key={u.id} value={u.id}>{u.nama_unit}</option>)}
+                                        </select>
+                                    )}
                                 </div>
                                 <div>
                                     <label className="form-label flex gap-1">Tahun <span className="text-red-500">*</span></label>

@@ -105,6 +105,7 @@ export default function Sidebar() {
     const { profile } = useUserProfile();
     const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({});
     const [mobileOpen, setMobileOpen] = useState(false);
+    const navRef = React.useRef<HTMLDivElement>(null);
 
     // Persist openMenus to localStorage
     React.useEffect(() => {
@@ -124,6 +125,23 @@ export default function Sidebar() {
         }
     }, [openMenus]);
 
+    // Restore scroll position
+    React.useEffect(() => {
+        const savedScrollPos = localStorage.getItem('sidebar_scroll_position');
+        if (savedScrollPos && navRef.current) {
+            const timer = setTimeout(() => {
+                if (navRef.current) {
+                    navRef.current.scrollTop = parseInt(savedScrollPos, 10);
+                }
+            }, 50);
+            return () => clearTimeout(timer);
+        }
+    }, []);
+
+    const handleScroll = (e: React.UIEvent<HTMLElement>) => {
+        localStorage.setItem('sidebar_scroll_position', String(e.currentTarget.scrollTop));
+    };
+
     const toggle = (label: string) =>
         setOpenMenus(prev => ({ ...prev, [label]: !prev[label] }));
 
@@ -138,7 +156,14 @@ export default function Sidebar() {
         window.location.href = '/login';
     };
 
-    const SidebarContent = () => (
+    const filteredNavItems = navItems.filter(item => {
+        if (profile?.role === 'user_unit') {
+            return !['Master Data', 'Pengaturan', 'Buku Pedoman'].includes(item.label);
+        }
+        return true;
+    });
+
+    const sidebarContent = (
         <div className="flex flex-col h-full z-10 relative">
             <div className="pt-3 px-3 pb-2">
                 <div className="bg-[#137fec] rounded-2xl p-3.5 shadow-lg shadow-blue-500/20 relative overflow-hidden group">
@@ -164,8 +189,12 @@ export default function Sidebar() {
             </div>
 
             {/* Nav */}
-            <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-                {navItems.map((item) => (
+            <nav
+                ref={navRef}
+                onScroll={handleScroll}
+                className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto"
+            >
+                {filteredNavItems.map((item) => (
                     <div key={item.label}>
                         {item.children ? (
                             <>
@@ -181,7 +210,7 @@ export default function Sidebar() {
                                             ? 'text-white bg-[#137fec] shadow-lg shadow-blue-500/30'
                                             : isAnyChildActive(item)
                                                 ? 'text-[#137fec] bg-blue-50 font-bold border border-blue-100/50'
-                                                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50 active:scale-95'}`}
+                                                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'}`}
                                 >
                                     <span className="flex items-center space-x-3">
                                         <div className={`p-1.5 rounded-lg transition-colors ${isDirectlyActive(item.href) ? 'bg-white/20 text-white' : isAnyChildActive(item) ? 'bg-[#137fec]/10 text-[#137fec]' : 'bg-slate-100 text-slate-500'}`}>
@@ -231,8 +260,8 @@ export default function Sidebar() {
                                                                         href={subChild.href!}
                                                                         className={`flex items-center space-x-2.5 px-3 py-2.5 rounded-xl text-[11px] font-bold transition-all duration-150
                                                                         ${isDirectlyActive(subChild.href)
-                                                                                ? 'text-white bg-[#137fec] shadow-lg shadow-blue-500/20 active:scale-95'
-                                                                                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50 active:scale-95'}`}
+                                                                                ? 'text-white bg-[#137fec] shadow-lg shadow-blue-500/20'
+                                                                                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'}`}
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
                                                                             setMobileOpen(false);
@@ -252,8 +281,8 @@ export default function Sidebar() {
                                                         href={child.href!}
                                                         className={`flex items-center space-x-2.5 px-3 py-2.5 rounded-xl text-[12px] font-semibold transition-all duration-150
                                                         ${isDirectlyActive(child.href)
-                                                                ? 'text-white bg-[#137fec] shadow-lg shadow-blue-500/20 active:scale-95'
-                                                                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50 active:scale-95'}`}
+                                                                ? 'text-white bg-[#137fec] shadow-lg shadow-blue-500/20'
+                                                                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'}`}
                                                         onClick={() => setMobileOpen(false)}
                                                     >
                                                         <div className={`p-1.5 rounded-lg transition-colors ${isDirectlyActive(child.href) ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200'}`}>
@@ -272,8 +301,8 @@ export default function Sidebar() {
                                 href={item.href!}
                                 className={`flex items-center space-x-3 px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-all duration-150
                   ${isDirectlyActive(item.href)
-                                        ? 'text-white bg-[#137fec] shadow-lg shadow-blue-500/30 active:scale-95'
-                                        : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50 active:scale-95 group'}`}
+                                        ? 'text-white bg-[#137fec] shadow-lg shadow-blue-500/30'
+                                        : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50 group'}`}
                                 onClick={() => setMobileOpen(false)}
                             >
                                 <div className={`p-1.5 rounded-lg transition-colors ${isDirectlyActive(item.href) ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200'}`}>
@@ -330,13 +359,13 @@ export default function Sidebar() {
 
             {/* Desktop sidebar */}
             <aside className="hidden md:flex w-64 bg-white border-r border-slate-100 flex-col h-screen sticky top-0 shrink-0 shadow-sm">
-                <SidebarContent />
+                {sidebarContent}
             </aside>
 
             {/* Mobile sidebar */}
             <aside className={`md:hidden fixed top-0 left-0 h-full w-64 bg-white border-r border-slate-100 z-40 transform transition-transform duration-300
         ${mobileOpen ? 'translate-x-0' : '-translate-x-full shadow-2xl'}`}>
-                <SidebarContent />
+                {sidebarContent}
             </aside>
         </>
     );

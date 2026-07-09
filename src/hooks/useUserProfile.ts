@@ -13,14 +13,20 @@ export interface UserProfile {
 }
 
 export function useUserProfile() {
-    const [profile, setProfile] = useState<UserProfile | null>(() => {
-        if (typeof window !== 'undefined') {
+    const [profile, setProfile] = useState<UserProfile | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    // Load cached profile from localStorage AFTER hydration
+    useEffect(() => {
+        try {
             const saved = localStorage.getItem('user_profile_cache');
-            return saved ? JSON.parse(saved) : null;
+            if (saved) {
+                setProfile(JSON.parse(saved));
+            }
+        } catch (e) {
+            console.error('Failed to parse cached profile', e);
         }
-        return null;
-    });
-    const [loading, setLoading] = useState(!profile);
+    }, []);
 
     useEffect(() => {
         const fetchProfile = async () => {
@@ -28,8 +34,8 @@ export function useUserProfile() {
                 const { data: { user } } = await supabase.auth.getUser();
                 if (user) {
                     const { data: profileData, error } = await supabase
-                        .from('user_profiles')
-                        .select('id, full_name, role, unit_kerja_id')
+                        .from('profiles')
+                        .select('id, role, unit_kerja_id')
                         .eq('id', user.id)
                         .single();
 
@@ -47,7 +53,7 @@ export function useUserProfile() {
                         const newProfile: UserProfile = {
                             id: user.id,
                             email: user.email || '',
-                            full_name: profileData.full_name || user.email || 'User',
+                            full_name: user.email || 'User',
                             role: profileData.role || 'user',
                             unit_kerja_id: profileData.unit_kerja_id,
                             unit_kerja_name: unitName

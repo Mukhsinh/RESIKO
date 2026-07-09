@@ -37,6 +37,7 @@ export default function MasterPenggunaPage() {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const [importing, setImporting] = useState(false);
+    const [editingId, setEditingId] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const fetchData = useCallback(async () => {
@@ -59,7 +60,17 @@ export default function MasterPenggunaPage() {
                 throw profilesError;
             }
 
-            setData((profiles || []) as unknown as Profile[]);
+            // Map DB roles (superadmin -> admin, user_unit -> manager) to frontend roles
+            const mappedProfiles = (profiles || []).map((p: any) => ({
+                id: p.id,
+                email: p.email || '',
+                role: p.role === 'superadmin' ? 'admin' : (p.role === 'user_unit' ? 'manager' : p.role),
+                unit_kerja_id: p.unit_kerja_id,
+                unit_kerja: p.unit_kerja,
+                created_at: p.created_at
+            }));
+
+            setData(mappedProfiles as Profile[]);
         } catch (error) {
             console.error('Error fetching data:', error);
             alert('Gagal memuat data: ' + (error as Error).message);
@@ -90,29 +101,73 @@ export default function MasterPenggunaPage() {
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault(); setSaving(true); setError('');
         try {
-            const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-                email: form.email, password: form.password, email_confirm: true,
-            });
-            if (authError) throw authError;
-            if (authData.user) {
-                await supabase.from('profiles').upsert({
-                    id: authData.user.id,
-                    email: form.email,
-                    role: form.role,
-                    unit_kerja_id: form.unit_kerja_id || null,
+            if (editingId) {
+                // Update mode (PUT)
+                const res = await fetch('/api/admin/users', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: editingId,
+                        email: form.email,
+                        password: form.password || undefined, // only update if provided
+                        role: form.role,
+                        unit_kerja_id: form.unit_kerja_id || null
+                    })
                 });
+                const result = await res.json();
+                if (!res.ok) {
+                    throw new Error(result.error || 'Gagal menyimpan perubahan');
+                }
+            } else {
+                // Create mode (POST)
+                const res = await fetch('/api/admin/users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: form.email,
+                        password: form.password,
+                        role: form.role,
+                        unit_kerja_id: form.unit_kerja_id || null
+                    })
+                });
+                const result = await res.json();
+                if (!res.ok) {
+                    throw new Error(result.error || 'Gagal membuat pengguna');
+                }
             }
-            setShowModal(false); setForm(defaultForm); fetchData();
+            setShowModal(false); setForm(defaultForm); setEditingId(null); fetchData();
         } catch (err: unknown) {
-            setError((err as Error).message ?? 'Gagal membuat pengguna');
+            setError((err as Error).message ?? 'Gagal menyimpan pengguna');
         }
         setSaving(false);
     };
 
+    const handleEdit = (row: Profile) => {
+        setForm({
+            email: row.email,
+            role: row.role,
+            unit_kerja_id: row.unit_kerja_id || '',
+            password: '' // empty by default when editing (optional password update)
+        });
+        setEditingId(row.id);
+        setShowModal(true);
+        setError('');
+    };
+
     const handleDelete = async (row: Profile) => {
         if (!confirm(`Hapus pengguna ${row.email}?`)) return;
-        await supabase.from('profiles').delete().eq('id', row.id);
-        fetchData();
+        try {
+            const res = await fetch(`/api/admin/users?id=${row.id}`, {
+                method: 'DELETE'
+            });
+            const result = await res.json();
+            if (!res.ok) {
+                throw new Error(result.error || 'Gagal menghapus pengguna');
+            }
+            fetchData();
+        } catch (err: unknown) {
+            alert((err as Error).message ?? 'Gagal menghapus pengguna');
+        }
     };
 
     const handleDownloadTemplate = () => {
@@ -175,23 +230,21 @@ export default function MasterPenggunaPage() {
 
             for (const row of validData) {
                 try {
-                    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-                        email: row.email.trim(),
-                        password: row.password.trim(),
-                        email_confirm: true,
-                    });
-
-                    if (authError) throw authError;
-
-                    if (authData.user) {
-                        await supabase.from('profiles').upsert({
-                            id: authData.user.id,
+                    const res = await fetch('/api/admin/users', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
                             email: row.email.trim(),
+                            password: row.password.trim(),
                             role: row.role.trim(),
-                            unit_kerja_id: row.unit_kerja_id?.trim() || null,
-                        });
-                        successCount++;
+                            unit_kerja_id: row.unit_kerja_id?.trim() || null
+                        })
+                    });
+                    const result = await res.json();
+                    if (!res.ok) {
+                        throw new Error(result.error || 'Gagal membuat pengguna');
                     }
+                    successCount++;
                 } catch (err) {
                     console.error('Error importing user:', row.email, err);
                     errorCount++;
@@ -255,22 +308,22 @@ export default function MasterPenggunaPage() {
                                 onChange={handleImport}
                                 className="hidden"
                             />
-                            <button className="btn-primary" onClick={() => { setShowModal(true); setForm(defaultForm); setError(''); }}>
+                            <button className="btn-primary" onClick={() => { setShowModal(true); setForm(defaultForm); setEditingId(null); setError(''); }}>
                                 <Plus size={15} />
                                 <span>Tambah Pengguna</span>
                             </button>
                         </div>
                     }
                 />
-                <DataTable columns={columns} data={filtered} onDelete={handleDelete} isLoading={loading} />
+                <DataTable columns={columns} data={filtered} onEdit={handleEdit} onDelete={handleDelete} isLoading={loading} />
             </div>
 
             {showModal && (
                 <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
                         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-                            <h3 className="text-base font-bold text-slate-800">Tambah Pengguna Baru</h3>
-                            <button onClick={() => setShowModal(false)} className="p-1.5 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
+                            <h3 className="text-base font-bold text-slate-800">{editingId ? 'Edit Pengguna' : 'Tambah Pengguna Baru'}</h3>
+                            <button onClick={() => { setShowModal(false); setEditingId(null); }} className="p-1.5 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
                         </div>
                         <form onSubmit={handleSave} className="p-6 space-y-4">
                             {error && <p className="text-xs text-rose-600 bg-rose-50 p-3 rounded-lg">{error}</p>}
@@ -279,8 +332,8 @@ export default function MasterPenggunaPage() {
                                 <input type="email" className="form-input" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} required placeholder="pengguna@rsud.go.id" />
                             </div>
                             <div>
-                                <label className="form-label">Password Awal</label>
-                                <input type="password" className="form-input" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} required minLength={8} placeholder="Min. 8 karakter" />
+                                <label className="form-label">{editingId ? 'Password Baru (Kosongkan jika tidak diubah)' : 'Password Awal'}</label>
+                                <input type="password" className="form-input" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} required={!editingId} minLength={8} placeholder={editingId ? "Kosongkan jika tidak diubah" : "Min. 8 karakter"} />
                             </div>
                             <div>
                                 <label className="form-label">Role</label>
@@ -297,9 +350,9 @@ export default function MasterPenggunaPage() {
                                 </select>
                             </div>
                             <div className="flex justify-end space-x-2 pt-2">
-                                <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>Batal</button>
+                                <button type="button" className="btn-secondary" onClick={() => { setShowModal(false); setEditingId(null); }}>Batal</button>
                                 <button type="submit" className="btn-primary" disabled={saving}>
-                                    {saving ? <><Loader2 size={15} className="animate-spin" /><span>Membuat...</span></> : <><Save size={15} /><span>Buat Pengguna</span></>}
+                                    {saving ? <><Loader2 size={15} className="animate-spin" /><span>Menyimpan...</span></> : <><Save size={15} /><span>{editingId ? 'Simpan' : 'Buat Pengguna'}</span></>}
                                 </button>
                             </div>
                         </form>

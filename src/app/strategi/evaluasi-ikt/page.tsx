@@ -7,6 +7,7 @@ import DataTable, { type Column } from '@/components/DataTable';
 import FormInputAI from '@/components/FormInputAI';
 import { Download, Upload, FileText, Target, Activity, AlertCircle, CheckCircle2, Save, X, Loader2, BarChart2, Plus, Link2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { useUserProfile } from '@/hooks/useUserProfile';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -21,6 +22,8 @@ interface IKTEvaluasi {
     realisasi_nilai?: number | null;
     kendala?: string | null;
     tindak_lanjut?: string | null;
+    unit_kerja_id?: string;
+    unit_kerja?: { nama_unit: string };
 }
 
 // Form untuk Edit Realisasi (existing record)
@@ -61,8 +64,11 @@ const defaultEvalForm: EvalForm = {
 };
 
 export default function EvaluasiIKTPage() {
+    const { profile } = useUserProfile();
     const [data, setData] = useState<IKTEvaluasi[]>([]);
     const [allIKT, setAllIKT] = useState<IKTEvaluasi[]>([]); // semua IKT untuk dropdown
+    const [units, setUnits] = useState<{ id: string; nama_unit: string }[]>([]);
+    const [filterUnit, setFilterUnit] = useState<string>('all');
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [year, setYear] = useState(String(CURRENT_YEAR));
@@ -78,11 +84,29 @@ export default function EvaluasiIKTPage() {
 
     const [saving, setSaving] = useState(false);
 
+    // Sync unit filter for managers
+    useEffect(() => {
+        if (profile?.role === 'user_unit' && profile.unit_kerja_id) {
+            setFilterUnit(profile.unit_kerja_id);
+        }
+    }, [profile]);
+
+    // Fetch units list
+    useEffect(() => {
+        supabase.from('unit_kerja').select('id, nama_unit').order('nama_unit').then(({ data: u }) => {
+            if (u) setUnits(u);
+        });
+    }, []);
+
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            let query = supabase.from('indikator_kinerja_utama').select('*').order('created_at', { ascending: false });
+            let query = supabase.from('indikator_kinerja_utama').select('*, unit_kerja(nama_unit)').order('created_at', { ascending: false });
             if (year) query = query.eq('target_tahun', Number(year));
+            const unitToFilter = profile?.role === 'user_unit' ? profile.unit_kerja_id : (filterUnit === 'all' ? null : filterUnit);
+            if (unitToFilter) {
+                query = query.eq('unit_kerja_id', unitToFilter);
+            }
             const { data: rows, error } = await query;
             if (error) {
                 console.error('Error fetching evaluasi IKT:', error);
@@ -96,19 +120,25 @@ export default function EvaluasiIKTPage() {
         } finally {
             setLoading(false);
         }
-    }, [year]);
+    }, [year, filterUnit, profile]);
 
     const fetchAllIKT = useCallback(async () => {
         try {
-            const { data: rows } = await supabase
+            let query = supabase
                 .from('indikator_kinerja_utama')
-                .select('id, indikator, target_tahun, target_nilai, satuan, pic')
+                .select('id, indikator, target_tahun, target_nilai, satuan, pic, unit_kerja_id')
                 .order('target_tahun', { ascending: false });
+
+            const unitToFilter = profile?.role === 'user_unit' ? profile.unit_kerja_id : (filterUnit === 'all' ? null : filterUnit);
+            if (unitToFilter) {
+                query = query.eq('unit_kerja_id', unitToFilter);
+            }
+            const { data: rows } = await query;
             setAllIKT((rows as IKTEvaluasi[]) ?? []);
         } catch (err) {
             console.error('Error fetching all IKT:', err);
         }
-    }, []);
+    }, [filterUnit, profile]);
 
     useEffect(() => {
         fetchData();
@@ -222,6 +252,7 @@ export default function EvaluasiIKTPage() {
 
     const columns: Column<IKTEvaluasi>[] = [
         { key: 'target_tahun', label: 'Tahun', className: 'w-16 text-center' },
+        { key: 'unit_kerja_id', label: 'Unit', render: r => (r as any).unit_kerja?.nama_unit ?? '-' },
         { key: 'indikator', label: 'Indikator Kinerja', render: r => <span className="line-clamp-2">{r.indikator}</span> },
         { key: 'target_nilai', label: 'Target', className: 'text-center', render: r => r.target_nilai != null ? `${r.target_nilai} ${r.satuan ?? ''}`.trim() : '-' },
         {
@@ -303,13 +334,25 @@ export default function EvaluasiIKTPage() {
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
                 <TopActionBar
                     filters={
-                        <FilterBar
-                            searchValue={search}
-                            onSearchChange={setSearch}
-                            searchPlaceholder="Cari indikator..."
-                            yearValue={year}
-                            onYearChange={setYear}
-                        />
+                        <div className="flex flex-wrap items-center gap-3">
+                            <FilterBar
+                                searchValue={search}
+                                onSearchChange={setSearch}
+                                searchPlaceholder="Cari indikator..."
+                                yearValue={year}
+                                onYearChange={setYear}
+                            />
+                            {profile?.role === 'user_unit' ? (
+                                <div className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold border border-slate-200">
+                                    {units.find(u => u.id === filterUnit)?.nama_unit || 'Unit Anda'}
+                                </div>
+                            ) : (
+                                <select className="form-input text-xs py-2 w-48" value={filterUnit} onChange={e => setFilterUnit(e.target.value)}>
+                                    <option value="all">Semua Unit Kerja</option>
+                                    {units.map(u => <option key={u.id} value={u.id}>{u.nama_unit}</option>)}
+                                </select>
+                            )}
+                        </div>
                     }
                     actions={<>
                         <button className="btn-secondary"><Download size={15} /><span className="hidden sm:inline">Template</span></button>
