@@ -252,7 +252,7 @@ export default function SWOTPage() {
                                             </button>
 
                                             <FormInputAI
-                                                label="Uraian"
+                                                label={`Inventarisasi ${q.label} SWOT`}
                                                 placeholder={q.placeholder}
                                                 value={item.deskripsi}
                                                 onChange={v => updateItem(q.key as SwotCategory, index, 'deskripsi', v)}

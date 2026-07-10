@@ -218,7 +218,7 @@ export default function TOWSPage() {
                                         </button>
 
                                         <FormInputAI
-                                            label="Rumusan Strategi"
+                                            label={`Rumusan Strategi TOWS ${cell.key}`}
                                             placeholder={`Contoh rumusan strategi...`}
                                             value={item.strategi}
                                             onChange={v => updateItem(cell.key as TowsCategory, index, 'strategi', v)}

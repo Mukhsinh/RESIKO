@@ -314,28 +314,6 @@ export default function Sidebar() {
                     </div>
                 ))}
             </nav>
-
-            {/* User Info */}
-            <div className="p-4 border-t border-slate-100">
-                {profile && (
-                    <div className="flex items-center space-x-3 px-2 py-2 rounded-xl hover:bg-slate-50 cursor-pointer transition-all border border-transparent hover:border-slate-100 group">
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#137fec] to-blue-400 flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-sm transition-transform group-hover:scale-110">
-                            {profile.full_name?.charAt(0).toUpperCase()}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                            <p className="text-slate-800 text-xs font-bold truncate capitalize group-hover:text-[#137fec] transition-colors">{profile.full_name}</p>
-                            <p className="text-slate-400 text-[10px] font-medium truncate capitalize">{profile.role}</p>
-                        </div>
-                    </div>
-                )}
-                <button
-                    onClick={handleLogout}
-                    className="w-full mt-3 flex items-center justify-center space-x-2 px-3 py-2.5 rounded-xl text-[11px] font-bold text-slate-500 bg-slate-50 hover:text-rose-600 hover:bg-rose-50 transition-all border border-slate-100"
-                >
-                    <LogOut size={15} />
-                    <span>KELUAR SISTEM</span>
-                </button>
-            </div>
         </div>
     );
 
