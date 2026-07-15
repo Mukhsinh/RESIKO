@@ -7,6 +7,7 @@ import { BarChart2, Target, CheckCircle2, TrendingUp, Download, FileText } from 
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
+import { useAppSettings } from '@/hooks/useAppSettings';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -81,69 +82,128 @@ export default function LaporanStrategiPage() {
         XLSX.writeFile(wb, `Laporan_Strategi_${year}.xlsx`);
     };
 
+    const { settings } = useAppSettings();
+
     const handleExportPDF = () => {
         const doc = new jsPDF('p', 'pt', 'a4');
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
 
-        const addHeader = (d: jsPDF, title: string) => {
-            d.setFillColor(248, 250, 252);
-            d.rect(0, 0, pageWidth, 60, 'F');
-            d.setTextColor(19, 127, 236);
-            d.setFontSize(16);
-            d.setFont('helvetica', 'bold');
-            d.text('RS ANTIGRAVITY', 40, 35);
-            d.setTextColor(100, 116, 139);
-            d.setFontSize(10);
-            d.setFont('helvetica', 'normal');
-            d.text(title, pageWidth - 40, 35, { align: 'right' });
+        const hexToRgb = (hex: string): [number, number, number] => {
+            const def: [number, number, number] = [19, 127, 236]; // #137fec
+            if (!hex) return def;
+            const h = hex.replace('#', '');
+            if (h.length !== 6) return def;
+            const num = parseInt(h, 16);
+            return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
         };
+
+        const primaryColor = settings?.warna_primer || '#137fec';
+        const rgbColor = hexToRgb(primaryColor);
+
+        const addHeader = (d: jsPDF, title: string) => {
+            // Running Header
+            d.setDrawColor(226, 232, 240);
+            d.setLineWidth(1);
+            d.line(40, 55, pageWidth - 40, 55);
+
+            d.setTextColor(71, 85, 105);
+            d.setFontSize(8);
+            d.setFont('helvetica', 'bold');
+            d.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), 40, 45);
+
+            d.setTextColor(148, 163, 184);
+            d.setFont('helvetica', 'normal');
+            d.text(title, pageWidth - 40, 45, { align: 'right' });
+        };
+
         const addFooter = (d: jsPDF) => {
             const totalPages = d.getNumberOfPages();
             for (let i = 1; i <= totalPages; i++) {
                 d.setPage(i);
                 if (i === 1) continue; // skip cover
                 d.setTextColor(148, 163, 184);
-                d.setFontSize(9);
+                d.setFontSize(8);
                 d.setFont('helvetica', 'normal');
-                d.text('Laporan Rahasia & Internal', 40, pageHeight - 30);
-                d.text(`Halaman ${i - 1}`, pageWidth - 40, pageHeight - 30, { align: 'right' });
+                d.text(settings?.footer || 'Laporan Internal Rumah Sakit', 40, pageHeight - 30);
+                d.text(`Halaman ${i - 1} dari ${totalPages - 1}`, pageWidth - 40, pageHeight - 30, { align: 'right' });
                 d.setDrawColor(226, 232, 240);
-                d.setLineWidth(1);
-                d.line(40, pageHeight - 45, pageWidth - 40, pageHeight - 45);
+                d.setLineWidth(0.75);
+                d.line(40, pageHeight - 40, pageWidth - 40, pageHeight - 40);
+            }
+        };
+
+        // KOP Surat on the first page of content (or first page after cover/TOC)
+        const drawKopSurat = (d: jsPDF) => {
+            d.setDrawColor(30, 41, 59);
+            d.setLineWidth(1.5);
+            d.line(40, 110, pageWidth - 40, 110);
+            d.setLineWidth(0.5);
+            d.line(40, 114, pageWidth - 40, 114);
+
+            d.setTextColor(30, 41, 59);
+            d.setFont('helvetica', 'bold');
+            d.setFontSize(14);
+            d.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), 40, 50);
+
+            d.setFont('helvetica', 'normal');
+            d.setFontSize(9);
+            d.setTextColor(71, 85, 105);
+            d.text(settings?.alamat || '', 40, 68);
+            d.text(`Kota: ${settings?.kota || '-'} | Telp: ${settings?.telepon || '-'} | Email: ${settings?.email || '-'} | Web: ${settings?.website || '-'}`, 40, 84);
+
+            if (settings?.tagline) {
+                d.setFont('helvetica', 'oblique');
+                d.setFontSize(8);
+                d.text(`"${settings.tagline}"`, 40, 98);
             }
         };
 
         // Cover Page
-        doc.setFillColor(19, 127, 236);
+        doc.setFillColor(rgbColor[0], rgbColor[1], rgbColor[2]);
         doc.rect(0, 0, pageWidth, pageHeight, 'F');
         doc.setTextColor(255, 255, 255);
-        doc.setFontSize(28);
+
+        doc.setFontSize(26);
         doc.setFont('helvetica', 'bold');
-        doc.text(`LAPORAN MANAJEMEN STRATEGI`, pageWidth / 2, pageHeight / 2 - 40, { align: 'center' });
-        doc.setFontSize(20);
+        doc.text('LAPORAN CAPAIAN STRATEGI', pageWidth / 2, pageHeight / 2 - 60, { align: 'center' });
+
+        doc.setFontSize(18);
         doc.setFont('helvetica', 'normal');
-        doc.text(`Tahun ${year}`, pageWidth / 2, pageHeight / 2, { align: 'center' });
-        doc.setFontSize(14);
-        doc.text('RUMAH SAKIT ANTIGRAVITY', pageWidth / 2, pageHeight / 2 + 40, { align: 'center' });
+        doc.text(`Tahun Anggaran ${year}`, pageWidth / 2, pageHeight / 2, { align: 'center' });
+
+        doc.setFontSize(12);
+        doc.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), pageWidth / 2, pageHeight / 2 + 50, { align: 'center' });
+        doc.text(settings?.footer || '', pageWidth / 2, pageHeight - 50, { align: 'center' });
 
         doc.addPage();
 
+        // Table of Contents Page
         let tocPageNum = doc.getCurrentPageInfo().pageNumber;
         doc.addPage(); // skip for TOC
 
         let contentPageStart = doc.getCurrentPageInfo().pageNumber;
-        addHeader(doc, 'Laporan Strategi');
-        doc.setTextColor(30, 41, 59);
-        doc.setFontSize(18);
-        doc.setFont('helvetica', 'bold');
-        doc.text('1. Detail Capaian KPI Per Unit', 40, 100);
 
-        let finalY = 120;
+        // Draw KOP Surat on the first content page
+        drawKopSurat(doc);
+
+        doc.setTextColor(30, 41, 59);
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text('A. Rekapitulasi Capaian KPI Berdasarkan Unit Kerja', 40, 140);
+
+        let finalY = 160;
 
         byUnit.forEach(([unit, items]) => {
-            doc.setFontSize(12);
-            doc.text(`Unit: ${unit}`, 40, finalY + 15);
+            if (finalY > pageHeight - 120) {
+                doc.addPage();
+                finalY = 70;
+            }
+
+            doc.setFontSize(11);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(51, 65, 85);
+            doc.text(`Unit Kerja: ${unit}`, 40, finalY + 15);
 
             const tableData = items.map(item => [
                 item.sasaran_strategis,
@@ -154,29 +214,66 @@ export default function LaporanStrategiPage() {
 
             autoTable(doc, {
                 startY: finalY + 25,
-                head: [['Sasaran Strategis', 'KPI', 'Target', 'Realisasi']],
+                head: [['Sasaran Strategis', 'KPI / Indikator', 'Target', 'Realisasi']],
                 body: tableData,
                 theme: 'striped',
-                headStyles: { fillColor: [19, 127, 236] },
+                headStyles: { fillColor: rgbColor },
+                styles: { fontSize: 8 },
                 margin: { left: 40, right: 40 },
                 didDrawPage: (data) => {
-                    addHeader(doc, 'Laporan Strategi');
+                    const currentPage = doc.getCurrentPageInfo().pageNumber;
+                    if (currentPage > contentPageStart) {
+                        addHeader(doc, 'Laporan Strategi');
+                    }
                 }
             });
-            finalY = (doc as any).lastAutoTable.finalY + 10;
+            finalY = (doc as any).lastAutoTable.finalY + 20;
         });
 
-        // Add TOC
+        // Add Signature block at the end
+        if (finalY > pageHeight - 160) {
+            doc.addPage();
+            finalY = 70;
+        } else {
+            finalY += 20;
+        }
+
+        doc.setFontSize(10);
+        doc.setTextColor(51, 65, 85);
+        doc.setFont('helvetica', 'normal');
+        doc.text('Disiapkan oleh,', 60, finalY);
+        doc.text('Tim Pengelola Strategi', 60, finalY + 15);
+        doc.line(60, finalY + 70, 200, finalY + 70);
+        doc.text('Staf Kepegawaian / Perencana', 60, finalY + 85);
+
+        doc.text('Disetujui oleh,', pageWidth - 200, finalY);
+        doc.setFont('helvetica', 'bold');
+        doc.text(settings?.kepala_rs || 'Pimpinan Rumah Sakit', pageWidth - 200, finalY + 15);
+        doc.line(pageWidth - 200, finalY + 70, pageWidth - 60, finalY + 70);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`NIP: ${settings?.nip_kepala || '-'}`, pageWidth - 200, finalY + 85);
+
+        // Add TOC Content
         doc.setPage(tocPageNum);
         addHeader(doc, 'Daftar Isi');
         doc.setTextColor(30, 41, 59);
-        doc.setFontSize(18);
+        doc.setFontSize(16);
         doc.setFont('helvetica', 'bold');
-        doc.text('Daftar Isi', 40, 100);
-        doc.setFontSize(12);
+        doc.text('DAFTAR ISI LAPORAN', 40, 100);
+
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(1);
+        doc.line(40, 115, pageWidth - 40, 115);
+
+        doc.setFontSize(11);
         doc.setFont('helvetica', 'normal');
-        doc.text('1. Detail Capaian KPI Per Unit', 40, 130);
-        doc.text(`${contentPageStart - 1}`, pageWidth - 40, 130, { align: 'right' });
+
+        doc.text('1. Detail Capaian KPI Berdasarkan Unit Kerja', 40, 145);
+        doc.text(`${contentPageStart - 1}`, pageWidth - 40, 145, { align: 'right' });
+
+        doc.text('2. Lembar Tanda Tangan Pengesahan Laporan', 40, 165);
+        const lastPage = doc.getNumberOfPages();
+        doc.text(`${lastPage - 1}`, pageWidth - 40, 165, { align: 'right' });
 
         addFooter(doc);
         doc.save(`Laporan_Strategi_${year}.pdf`);

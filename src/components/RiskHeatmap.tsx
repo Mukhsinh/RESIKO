@@ -18,10 +18,10 @@ const IMPACT_LABELS = ['', 'Sangat Ringan', 'Ringan', 'Sedang', 'Berat', 'Sangat
 
 function getCellClass(x: number, y: number) {
     const s = x * y;
-    if (s >= 15) return 'bg-red-200 border-red-300';
-    if (s >= 10) return 'bg-orange-200 border-orange-300';
-    if (s >= 5) return 'bg-yellow-100 border-yellow-200';
-    return 'bg-emerald-100 border-emerald-200';
+    if (s >= 15) return 'bg-red-500 border-red-600';
+    if (s >= 10) return 'bg-orange-500 border-orange-600';
+    if (s >= 5) return 'bg-yellow-400 border-yellow-500';
+    return 'bg-emerald-500 border-emerald-600';
 }
 
 function getCellLabel(x: number, y: number) {
@@ -33,7 +33,7 @@ function getCellLabel(x: number, y: number) {
 }
 
 function MarkerDot({ type, label }: { type?: string; label: string }) {
-    const base = 'w-5 h-5 flex-shrink-0 shadow-md cursor-pointer relative group';
+    const base = 'w-5 h-5 flex-shrink-0 shadow-md cursor-pointer relative group border-2 border-white';
     let cls = base;
     let ch = '';
     if (type === 'inherent') { cls += ' bg-red-500 rotate-45'; ch = 'I'; }
@@ -90,7 +90,7 @@ export default function RiskHeatmap({ data }: RiskHeatmapProps) {
                                         style={{ minHeight: '80px' }}
                                         title={`${getCellLabel(x, y)} (P:${y} D:${x}) = ${x * y}`}
                                     >
-                                        <span className="absolute bottom-0.5 right-1 text-[9px] font-mono text-slate-400 opacity-60">{x * y}</span>
+                                        <span className={`absolute bottom-0.5 right-1 text-[9px] font-mono font-bold ${x * y >= 5 && x * y < 10 ? 'text-slate-800/60' : 'text-white/60'}`}>{x * y}</span>
                                         {pts.map((pt, i) => (
                                             <MarkerDot key={i} type={pt.type} label={pt.label} />
                                         ))}
@@ -111,14 +111,14 @@ export default function RiskHeatmap({ data }: RiskHeatmapProps) {
 
             {/* Legend */}
             <div className="mt-5 flex flex-wrap items-center gap-4 justify-center text-xs text-slate-600 bg-slate-50 border border-slate-100 rounded-xl px-6 py-3 w-full">
-                <div className="flex items-center gap-1.5"><div className="w-3 h-3 bg-red-200 border border-red-300 rounded-sm" /><span>Sangat Tinggi (≥15)</span></div>
-                <div className="flex items-center gap-1.5"><div className="w-3 h-3 bg-orange-200 border border-orange-300 rounded-sm" /><span>Tinggi (10–14)</span></div>
-                <div className="flex items-center gap-1.5"><div className="w-3 h-3 bg-yellow-100 border border-yellow-200 rounded-sm" /><span>Sedang (5–9)</span></div>
-                <div className="flex items-center gap-1.5"><div className="w-3 h-3 bg-emerald-100 border border-emerald-200 rounded-sm" /><span>Rendah (&lt;5)</span></div>
+                <div className="flex items-center gap-1.5"><div className="w-3 h-3 bg-red-500 border border-red-600 rounded-sm" /><span>Sangat Tinggi (≥15)</span></div>
+                <div className="flex items-center gap-1.5"><div className="w-3 h-3 bg-orange-500 border border-orange-600 rounded-sm" /><span>Tinggi (10–14)</span></div>
+                <div className="flex items-center gap-1.5"><div className="w-3 h-3 bg-yellow-400 border border-yellow-500 rounded-sm" /><span>Sedang (5–9)</span></div>
+                <div className="flex items-center gap-1.5"><div className="w-3 h-3 bg-emerald-500 border border-emerald-600 rounded-sm" /><span>Rendah (&lt;5)</span></div>
                 <div className="w-px h-4 bg-slate-200" />
-                <div className="flex items-center gap-1.5"><div className="w-3 h-3 bg-red-500 rotate-45" /><span className="ml-1">Inherent (I)</span></div>
-                <div className="flex items-center gap-1.5"><div className="w-3 h-3 bg-emerald-500 rounded-full" /><span>Residual (R)</span></div>
-                <div className="flex items-center gap-1.5"><div className="w-3 h-3 bg-blue-500 rounded-sm" /><span>Appetite (A)</span></div>
+                <div className="flex items-center gap-1.5"><div className="w-3 h-3 bg-red-500 rotate-45 border border-white" /><span className="ml-1">Inherent (I)</span></div>
+                <div className="flex items-center gap-1.5"><div className="w-3 h-3 bg-emerald-500 rounded-full border border-white" /><span>Residual (R)</span></div>
+                <div className="flex items-center gap-1.5"><div className="w-3 h-3 bg-blue-500 rounded-sm border border-white" /><span>Appetite (A)</span></div>
             </div>
         </div>
     );

@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { PageHeader, ScoreCard, FilterBar, TopActionBar } from '@/components/SharedUI';
 import DataTable, { type Column } from '@/components/DataTable';
 import FormInputAI from '@/components/FormInputAI';
+import { useUserProfile } from '@/hooks/useUserProfile';
 import {
     Plus, Download, Upload, FileText,
     AlertTriangle, ShieldAlert, CheckCircle2, X, Save, Loader2
@@ -73,17 +74,26 @@ const defaultForm: FormData = {
 };
 
 export default function IdentifikasiRisikoPage() {
+    const { profile } = useUserProfile();
     const [data, setData] = useState<RiskInput[]>([]);
     const [units, setUnits] = useState<{ id: string; nama_unit: string }[]>([]);
     const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [year, setYear] = useState(String(CURRENT_YEAR));
+    const [filterUnit, setFilterUnit] = useState<string>('all');
     const [showModal, setShowModal] = useState(false);
     const [editId, setEditId] = useState<string | null>(null);
     const [form, setForm] = useState<FormData>(defaultForm);
     const [saving, setSaving] = useState(false);
     const [sasaranOptions, setSasaranOptions] = useState<string[]>([]);
+
+    // Auto-lock unit filter for unit managers
+    useEffect(() => {
+        if (profile?.role === 'user_unit' && profile.unit_kerja_id) {
+            setFilterUnit(profile.unit_kerja_id);
+        }
+    }, [profile]);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -99,6 +109,12 @@ export default function IdentifikasiRisikoPage() {
                 query = query.gte('identifikasi_tanggal', yearStart).lte('identifikasi_tanggal', yearEnd);
             }
 
+            // Apply unit filter
+            const unitToFilter = profile?.role === 'user_unit' ? profile.unit_kerja_id : (filterUnit === 'all' ? null : filterUnit);
+            if (unitToFilter) {
+                query = query.eq('nama_unit_kerja_id', unitToFilter);
+            }
+
             const { data: rows, error } = await query;
             if (error) {
                 console.error('Error fetching risk data:', error);
@@ -112,7 +128,7 @@ export default function IdentifikasiRisikoPage() {
         } finally {
             setLoading(false);
         }
-    }, [year]);
+    }, [year, filterUnit, profile]);
 
     useEffect(() => {
         fetchData();
@@ -129,28 +145,78 @@ export default function IdentifikasiRisikoPage() {
         });
     }, [fetchData]);
 
+    // Fetch sasaran strategi from TOWS based on selected unit and year
+    // NOTE: risk_inputs uses master_work_units IDs, but swot_tows_strategi uses unit_kerja IDs.
+    // We bridge them by matching unit names to find the correct unit_kerja ID.
     useEffect(() => {
         if (!form.nama_unit_kerja_id) {
             setSasaranOptions([]);
             return;
         }
         const fetchSasaran = async () => {
-            const currentYear = year || String(CURRENT_YEAR);
+            const formYear = form.identifikasi_tanggal
+                ? new Date(form.identifikasi_tanggal).getFullYear()
+                : Number(year || CURRENT_YEAR);
+
+            // Step 1: Find the unit name from master_work_units
+            const selectedUnit = units.find(u => u.id === form.nama_unit_kerja_id);
+            const unitName = selectedUnit?.nama_unit;
+
+            if (!unitName) {
+                setSasaranOptions([]);
+                return;
+            }
+
+            // Step 2: Find the matching unit_kerja ID by name
+            const { data: ukData } = await supabase
+                .from('unit_kerja')
+                .select('id')
+                .eq('nama_unit', unitName)
+                .limit(1);
+
+            const towsUnitId = ukData && ukData.length > 0 ? ukData[0].id : null;
+
+            if (!towsUnitId) {
+                // Fallback: try direct query (in case both tables share same IDs)
+                const { data: directData } = await supabase
+                    .from('swot_tows_strategi')
+                    .select('sasaran_strategi')
+                    .eq('unit_kerja_id', form.nama_unit_kerja_id)
+                    .eq('tahun', formYear)
+                    .not('sasaran_strategi', 'is', null)
+                    .neq('sasaran_strategi', '');
+
+                if (directData && directData.length > 0) {
+                    const uniqueSasaran = Array.from(
+                        new Set((directData as any[]).map((d: any) => d.sasaran_strategi).filter((s: any) => s && s.trim() !== ''))
+                    ) as string[];
+                    setSasaranOptions(uniqueSasaran);
+                } else {
+                    setSasaranOptions([]);
+                }
+                return;
+            }
+
+            // Step 3: Query TOWS with the correct unit_kerja ID
             const { data, error } = await supabase
                 .from('swot_tows_strategi')
                 .select('sasaran_strategi')
-                .eq('unit_kerja_id', form.nama_unit_kerja_id)
-                .eq('tahun', Number(currentYear))
+                .eq('unit_kerja_id', towsUnitId)
+                .eq('tahun', formYear)
                 .not('sasaran_strategi', 'is', null)
                 .neq('sasaran_strategi', '');
 
             if (!error && data) {
-                const uniqueSasaran = Array.from(new Set((data as any[]).map((d: any) => d.sasaran_strategi).filter((s: any) => s.trim() !== ''))) as string[];
+                const uniqueSasaran = Array.from(
+                    new Set((data as any[]).map((d: any) => d.sasaran_strategi).filter((s: any) => s && s.trim() !== ''))
+                ) as string[];
                 setSasaranOptions(uniqueSasaran);
+            } else {
+                setSasaranOptions([]);
             }
         };
         fetchSasaran();
-    }, [form.nama_unit_kerja_id, year]);
+    }, [form.nama_unit_kerja_id, form.identifikasi_tanggal, year, units]);
 
     const filtered = data.filter(d =>
         (d.identifikasi_deskripsi || '').toLowerCase().includes(search.toLowerCase()) ||
@@ -165,7 +231,16 @@ export default function IdentifikasiRisikoPage() {
         opportunity: data.filter(d => d.jenis_risiko === 'Opportunity').length,
     };
 
-    const openAdd = () => { setEditId(null); setForm(defaultForm); setShowModal(true); };
+    const openAdd = () => {
+        setEditId(null);
+        const newForm = { ...defaultForm };
+        // Auto-set unit for unit managers
+        if (profile?.role === 'user_unit' && profile.unit_kerja_id) {
+            newForm.nama_unit_kerja_id = profile.unit_kerja_id;
+        }
+        setForm(newForm);
+        setShowModal(true);
+    };
     const openEdit = (row: RiskInput) => {
         setEditId(row.id);
         setForm({
@@ -222,6 +297,7 @@ export default function IdentifikasiRisikoPage() {
         { key: 'nama_risiko', label: 'Nama Risiko', render: r => <span className="font-semibold">{r.nama_risiko || '-'}</span> },
         { key: 'identifikasi_tanggal', label: 'Tanggal', render: r => r.identifikasi_tanggal ? new Date(r.identifikasi_tanggal).toLocaleDateString('id-ID') : '-' },
         { key: 'nama_unit_kerja_id', label: 'Unit Kerja', render: r => r.master_work_units?.name ?? '-' },
+        { key: 'sasaran', label: 'Sasaran Strategi', render: r => <span className="line-clamp-2 text-xs">{r.sasaran || '-'}</span> },
         { key: 'identifikasi_deskripsi', label: 'Deskripsi Risiko', render: r => <span className="line-clamp-2">{r.identifikasi_deskripsi || '-'}</span> },
         { key: 'kategori_risiko_id', label: 'Kategori', render: r => r.master_risk_categories?.name ?? '-' },
         { key: 'jenis_risiko', label: 'Jenis', render: r => <span className={r.jenis_risiko === 'Threat' ? 'badge-red' : 'badge-green'}>{r.jenis_risiko || 'Threat'}</span> },
@@ -242,10 +318,22 @@ export default function IdentifikasiRisikoPage() {
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
                 <TopActionBar
                     filters={
-                        <FilterBar
-                            searchValue={search} onSearchChange={setSearch} searchPlaceholder="Cari risiko..."
-                            yearValue={year} onYearChange={setYear}
-                        />
+                        <div className="flex flex-wrap items-center gap-3">
+                            <FilterBar
+                                searchValue={search} onSearchChange={setSearch} searchPlaceholder="Cari risiko..."
+                                yearValue={year} onYearChange={setYear}
+                            />
+                            {profile?.role === 'user_unit' ? (
+                                <div className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold border border-slate-200">
+                                    {units.find(u => u.id === filterUnit)?.nama_unit || 'Unit Anda'}
+                                </div>
+                            ) : (
+                                <select className="form-input text-xs py-2 w-48" value={filterUnit} onChange={e => setFilterUnit(e.target.value)}>
+                                    <option value="all">Semua Unit Kerja</option>
+                                    {units.map(u => <option key={u.id} value={u.id}>{u.nama_unit}</option>)}
+                                </select>
+                            )}
+                        </div>
                     }
                     actions={
                         <>
@@ -280,10 +368,16 @@ export default function IdentifikasiRisikoPage() {
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="form-label">Unit Kerja</label>
-                                    <select className="form-input" value={form.nama_unit_kerja_id} onChange={e => setForm(f => ({ ...f, nama_unit_kerja_id: e.target.value }))} required>
-                                        <option value="">-- Pilih Unit --</option>
-                                        {units.map(u => <option key={u.id} value={u.id}>{u.nama_unit}</option>)}
-                                    </select>
+                                    {profile?.role === 'user_unit' ? (
+                                        <div className="form-input bg-slate-100 text-slate-600 cursor-not-allowed">
+                                            {units.find(u => u.id === form.nama_unit_kerja_id)?.nama_unit || 'Unit Kerja Anda'}
+                                        </div>
+                                    ) : (
+                                        <select className="form-input" value={form.nama_unit_kerja_id} onChange={e => setForm(f => ({ ...f, nama_unit_kerja_id: e.target.value }))} required>
+                                            <option value="">-- Pilih Unit --</option>
+                                            {units.map(u => <option key={u.id} value={u.id}>{u.nama_unit}</option>)}
+                                        </select>
+                                    )}
                                 </div>
                                 <div>
                                     <label className="form-label">Kategori Risiko</label>
@@ -307,17 +401,22 @@ export default function IdentifikasiRisikoPage() {
                                 </div>
                             </div>
                             <div>
-                                <label className="form-label">Sasaran Strategi</label>
+                                <label className="form-label">Sasaran Strategi <span className="text-xs text-slate-400 font-normal">(dari TOWS)</span></label>
                                 <select
                                     className="form-input"
                                     value={form.sasaran}
                                     onChange={e => setForm(f => ({ ...f, sasaran: e.target.value }))}
+                                    disabled={!form.nama_unit_kerja_id}
                                 >
                                     <option value="">-- Pilih Sasaran Strategi --</option>
                                     {sasaranOptions.map((s, idx) => (
                                         <option key={idx} value={s}>{s}</option>
                                     ))}
                                 </select>
+                                {!form.nama_unit_kerja_id && <p className="text-xs text-rose-500 mt-1">Pilih Unit Kerja terlebih dahulu</p>}
+                                {form.nama_unit_kerja_id && sasaranOptions.length === 0 && (
+                                    <p className="text-xs text-amber-600 mt-1">Belum ada sasaran strategi di TOWS untuk unit & tahun ini</p>
+                                )}
                             </div>
                             <FormInputAI label="Deskripsi Risiko" placeholder="Deskripsi risiko secara detail..." value={form.identifikasi_deskripsi} onChange={v => setForm(f => ({ ...f, identifikasi_deskripsi: v }))} />
                             <FormInputAI label="Akar Penyebab" placeholder="Akar penyebab risiko..." value={form.identifikasi_akar_penyebab} onChange={v => setForm(f => ({ ...f, identifikasi_akar_penyebab: v }))} />

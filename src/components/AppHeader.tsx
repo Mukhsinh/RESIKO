@@ -48,28 +48,6 @@ export default function AppHeader() {
                     <Bell size={18} className="group-hover:scale-110 transition-transform" />
                     <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-yellow-400 rounded-full border-2 border-[#137fec] animate-pulse"></span>
                 </button>
-
-                <div className="h-8 w-[1px] bg-white/20 mx-1"></div>
-
-                {profile && (
-                    <div className="flex items-center space-x-3 pl-1">
-                        <div className="flex flex-col items-end hidden sm:flex">
-                            <span className="text-xs font-bold text-white leading-none mb-1">{profile.full_name}</span>
-                            <span className="text-[9px] text-blue-100 font-bold uppercase tracking-wider bg-white/10 px-2 py-0.5 rounded-full border border-white/10">{profile.role}</span>
-                        </div>
-                        <div className="w-9 h-9 rounded-xl bg-white flex items-center justify-center text-[#137fec] text-xs font-black shadow-lg shadow-black/10 border border-white/20 hover:scale-105 transition-transform cursor-pointer">
-                            {profile.full_name.charAt(0).toUpperCase()}
-                        </div>
-                    </div>
-                )}
-
-                <button
-                    onClick={handleLogout}
-                    className="flex items-center justify-center w-9 h-9 bg-rose-500/20 text-rose-100 rounded-xl hover:bg-rose-500 hover:text-white transition-all duration-300 border border-rose-500/20 group"
-                    title="Logout"
-                >
-                    <LogOut size={18} className="group-hover:translate-x-0.5 transition-transform" />
-                </button>
             </div>
         </header>
     );

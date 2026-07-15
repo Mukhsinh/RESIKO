@@ -9,6 +9,14 @@ export interface AppSettings {
     logo_url: string;
     footer: string;
     warna_primer: string;
+    alamat?: string;
+    kota?: string;
+    telepon?: string;
+    email?: string;
+    website?: string;
+    tagline?: string;
+    kepala_rs?: string;
+    nip_kepala?: string;
 }
 
 const CACHE_KEY = 'app_branding_settings';
@@ -20,6 +28,14 @@ export function useAppSettings() {
         logo_url: '',
         footer: '© 2026 RSUD · Sistem Manajemen Risiko Terintegrasi',
         warna_primer: '#137fec',
+        alamat: '',
+        kota: '',
+        telepon: '',
+        email: '',
+        website: '',
+        tagline: '',
+        kepala_rs: '',
+        nip_kepala: '',
     });
     const [loading, setLoading] = useState(true);
 
@@ -39,7 +55,7 @@ export function useAppSettings() {
             try {
                 const { data, error } = await supabase
                     .from('app_settings')
-                    .select('nama_aplikasi, nama_rs, logo_url, footer, warna_primer')
+                    .select('nama_aplikasi, nama_rs, logo_url, footer, warna_primer, alamat, kota, telepon, email, website, tagline, kepala_rs, nip_kepala')
                     .limit(1)
                     .single();
 
@@ -50,6 +66,14 @@ export function useAppSettings() {
                         logo_url: data.logo_url || '',
                         footer: data.footer || '© 2026 RSUD · Sistem Manajemen Risiko Terintegrasi',
                         warna_primer: data.warna_primer || '#137fec',
+                        alamat: data.alamat || '',
+                        kota: data.kota || '',
+                        telepon: data.telepon || '',
+                        email: data.email || '',
+                        website: data.website || '',
+                        tagline: data.tagline || '',
+                        kepala_rs: data.kepala_rs || '',
+                        nip_kepala: data.nip_kepala || '',
                     };
                     setSettings(newSettings);
                     localStorage.setItem(CACHE_KEY, JSON.stringify(newSettings));

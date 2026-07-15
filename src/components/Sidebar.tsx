@@ -103,38 +103,33 @@ export default function Sidebar() {
     const pathname = usePathname();
     const { settings } = useAppSettings();
     const { profile } = useUserProfile();
-    const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({});
+    const [openMenus, setOpenMenus] = useState<Record<string, boolean>>(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('sidebar_open_menus');
+            if (saved) {
+                try {
+                    return JSON.parse(saved);
+                } catch (e) {
+                    console.error('Failed to parse saved sidebar state', e);
+                }
+            }
+        }
+        return {};
+    });
     const [mobileOpen, setMobileOpen] = useState(false);
-    const navRef = React.useRef<HTMLDivElement>(null);
 
     // Persist openMenus to localStorage
     React.useEffect(() => {
-        const saved = localStorage.getItem('sidebar_open_menus');
-        if (saved) {
-            try {
-                setOpenMenus(JSON.parse(saved));
-            } catch (e) {
-                console.error('Failed to parse saved sidebar state', e);
-            }
-        }
-    }, []);
-
-    React.useEffect(() => {
-        if (Object.keys(openMenus).length > 0) {
-            localStorage.setItem('sidebar_open_menus', JSON.stringify(openMenus));
-        }
+        localStorage.setItem('sidebar_open_menus', JSON.stringify(openMenus));
     }, [openMenus]);
 
-    // Restore scroll position
-    React.useEffect(() => {
-        const savedScrollPos = localStorage.getItem('sidebar_scroll_position');
-        if (savedScrollPos && navRef.current) {
-            const timer = setTimeout(() => {
-                if (navRef.current) {
-                    navRef.current.scrollTop = parseInt(savedScrollPos, 10);
-                }
-            }, 50);
-            return () => clearTimeout(timer);
+    // Instant scroll restoration ref callback to prevent visual layout jump/bounce
+    const navRef = React.useCallback((node: HTMLElement | null) => {
+        if (node) {
+            const savedScrollPos = localStorage.getItem('sidebar_scroll_position');
+            if (savedScrollPos) {
+                node.scrollTop = parseInt(savedScrollPos, 10);
+            }
         }
     }, []);
 
@@ -318,29 +313,40 @@ export default function Sidebar() {
             {/* User Profile Info Card at Bottom */}
             {profile && (
                 <div className="mt-auto border-t border-slate-100 p-4 bg-slate-50/50">
-                    <div className="flex flex-col space-y-2">
-                        <div className="flex items-center space-x-3">
-                            <div className="w-9 h-9 rounded-xl bg-[#137fec]/10 flex items-center justify-center text-[#137fec] font-black shrink-0 text-xs">
-                                {profile.email ? profile.email.substring(0, 2).toUpperCase() : 'UR'}
+                    <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center space-x-3 overflow-hidden">
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#137fec] to-[#3b82f6] text-white flex items-center justify-center font-black shrink-0 text-sm shadow-md shadow-[#137fec]/15">
+                                {profile.full_name ? profile.full_name.charAt(0).toUpperCase() : 'U'}
                             </div>
                             <div className="overflow-hidden">
-                                <p className="text-xs font-bold text-slate-700 truncate" title={profile.email}>
+                                <p className="text-xs font-bold text-slate-800 truncate" title={profile.full_name || profile.email}>
+                                    {profile.full_name || profile.email}
+                                </p>
+                                <p className="text-[10px] text-slate-400 font-semibold truncate leading-none mt-0.5" title={profile.email}>
                                     {profile.email}
                                 </p>
-                                <div className="flex items-center space-x-1.5 mt-0.5">
-                                    <span className="text-[9px] font-black text-[#137fec] bg-blue-50 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                <div className="flex flex-wrap items-center gap-1 mt-1.5">
+                                    <span className="text-[9px] font-bold text-[#137fec] bg-blue-50 border border-blue-100/50 px-1.5 py-0.5 rounded-full uppercase tracking-wider">
                                         {profile.role === 'superadmin' ? 'superadmin' : profile.role}
                                     </span>
                                 </div>
                             </div>
                         </div>
-                        <div className="text-[10px] text-slate-500 font-bold bg-white border border-slate-100/80 rounded-lg p-2 flex flex-col space-y-1">
-                            <div className="flex justify-between">
-                                <span className="text-slate-400">Unit:</span>
-                                <span className="font-extrabold text-slate-700 truncate max-w-[140px]" title={profile.unit_kerja_name}>
-                                    {profile.unit_kerja_name || 'Semua Unit'}
-                                </span>
-                            </div>
+                        <button
+                            onClick={handleLogout}
+                            className="w-8 h-8 rounded-lg bg-rose-50 hover:bg-rose-500 text-rose-500 hover:text-white flex items-center justify-center shrink-0 border border-rose-100 hover:border-rose-500 transition-all duration-300 shadow-sm hover:shadow-md cursor-pointer"
+                            title="Keluar / Logout"
+                        >
+                            <LogOut size={15} />
+                        </button>
+                    </div>
+                    {/* Unit Kerja Info */}
+                    <div className="mt-3 text-[10px] text-slate-600 bg-white border border-slate-100 rounded-xl p-2.5 flex flex-col gap-1.5 shadow-sm">
+                        <div className="flex items-center justify-between">
+                            <span className="text-slate-400 font-medium shrink-0">Unit Kerja:</span>
+                            <span className="font-extrabold text-slate-700 truncate text-right ml-2" title={profile.unit_kerja_name || 'Semua Unit'}>
+                                {profile.unit_kerja_name || 'Semua Unit'}
+                            </span>
                         </div>
                     </div>
                 </div>
