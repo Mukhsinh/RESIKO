@@ -1,6 +1,6 @@
 'use client';
-import React, { useState, useRef, useEffect } from 'react';
-import { Download, Filter, Target, Table as TableIcon, FileSpreadsheet } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Download, Filter, Target, Table as TableIcon, FileSpreadsheet, RotateCw } from 'lucide-react';
 import {
     ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Cell
 } from 'recharts';
@@ -16,64 +16,88 @@ export default function DiagramKartesiusPage() {
     const [selectedUnit, setSelectedUnit] = useState('semua');
     const [chartData, setChartData] = useState<any[]>([]);
     const [units, setUnits] = useState<{ id: string; name: string }[]>([]);
+    const [availableYears, setAvailableYears] = useState<number[]>([]);
     const [loading, setLoading] = useState(false);
 
     const chartRef = useRef<HTMLDivElement>(null);
     const reportRef = useRef<HTMLDivElement>(null);
 
+    // Fetch dynamic years from IKT table
     useEffect(() => {
-        const fetchData = async () => {
-            setLoading(true);
-            try {
-                const { data: unitsData } = await supabase.from('master_work_units').select('id, name');
-                if (unitsData) setUnits(unitsData);
-
-                const { data: swotData } = await supabase
-                    .from('swot_inventarisasi')
-                    .select('*')
-                    .eq('tahun', Number(selectedYear));
-
-                if (unitsData && swotData) {
-                    const mappedData = unitsData.map((unit: any, index: number) => {
-                        const unitSwots = swotData.filter((s: any) => s.unit_kerja_id === unit.id);
-                        if (unitSwots.length === 0) return null;
-
-                        const sumSkor = (kategori: string) =>
-                            unitSwots.filter((s: any) => s.kategori === kategori)
-                                .reduce((acc: number, curr: any) => acc + (Number(curr.skor) || 0), 0);
-
-                        const totalKekuatan = sumSkor('Kekuatan');
-                        const totalKelemahan = sumSkor('Kelemahan');
-                        const totalPeluang = sumSkor('Peluang');
-                        const totalAncaman = sumSkor('Tantangan'); // Tantangan maps to Ancaman
-
-                        // Internal = Kekuatan - Kelemahan (Selisih untuk titik temu)
-                        const x = totalKekuatan - totalKelemahan;
-                        // Eksternal = Peluang - Ancaman
-                        const y = totalPeluang - totalAncaman;
-
-                        return {
-                            id: unit.id,
-                            name: unit.name,
-                            x: Number(x.toFixed(2)),
-                            y: Number(y.toFixed(2)),
-                            score: Number((totalKekuatan + totalKelemahan + totalPeluang + totalAncaman).toFixed(2)),
-                            color: COLORS[index % COLORS.length],
-                            details: { totalKekuatan, totalKelemahan, totalPeluang, totalAncaman }
-                        };
-                    }).filter(Boolean);
-
-                    setChartData(mappedData as any[]);
+        supabase.from('indikator_kinerja_utama')
+            .select('target_tahun')
+            .order('target_tahun', { ascending: true })
+            .then(({ data: rows }: { data: any }) => {
+                if (rows && rows.length > 0) {
+                    const yearSet = new Set<number>();
+                    rows.forEach((r: any) => { if (r.target_tahun) yearSet.add(r.target_tahun); });
+                    const sorted = Array.from(yearSet).sort((a, b) => a - b);
+                    if (sorted.length > 0) {
+                        setAvailableYears(sorted);
+                        if (!sorted.includes(Number(selectedYear))) {
+                            setSelectedYear(String(sorted[0]));
+                        }
+                    }
                 }
-            } catch (error) {
-                console.error("Error fetching kartesius data:", error);
-            } finally {
-                setLoading(false);
-            }
-        };
+            });
+    }, []);
 
-        fetchData();
+    const fetchData = useCallback(async () => {
+        setLoading(true);
+        try {
+            const { data: unitsData } = await supabase.from('unit_kerja').select('id, nama_unit').order('nama_unit');
+            const normalizedUnits = (unitsData ?? []).map((u: any) => ({ id: u.id, name: u.nama_unit }));
+            setUnits(normalizedUnits);
+
+            const { data: swotData } = await supabase
+                .from('swot_inventarisasi')
+                .select('*')
+                .eq('tahun', Number(selectedYear));
+
+            if (swotData) {
+                const mappedData = normalizedUnits.map((unit: any, index: number) => {
+                    const unitSwots = swotData.filter((s: any) => s.unit_kerja_id === unit.id);
+                    if (unitSwots.length === 0) return null;
+
+                    const sumSkor = (kategori: string) =>
+                        unitSwots.filter((s: any) => s.kategori === kategori)
+                            .reduce((acc: number, curr: any) => acc + (Number(curr.skor) || 0), 0);
+
+                    const totalKekuatan = sumSkor('Kekuatan');
+                    const totalKelemahan = sumSkor('Kelemahan');
+                    const totalPeluang = sumSkor('Peluang');
+                    const totalAncaman = sumSkor('Tantangan'); // Tantangan maps to Ancaman
+
+                    // Internal = Kekuatan - Kelemahan
+                    const x = totalKekuatan - totalKelemahan;
+                    // Eksternal = Peluang - Ancaman
+                    const y = totalPeluang - totalAncaman;
+
+                    return {
+                        id: unit.id,
+                        name: unit.name,
+                        x: Number(x.toFixed(2)),
+                        y: Number(y.toFixed(2)),
+                        score: Number((totalKekuatan + totalKelemahan + totalPeluang + totalAncaman).toFixed(2)),
+                        color: COLORS[index % COLORS.length],
+                        details: { totalKekuatan, totalKelemahan, totalPeluang, totalAncaman }
+                    };
+                }).filter(Boolean);
+
+                setChartData(mappedData as any[]);
+            } else {
+                setChartData([]);
+            }
+        } catch (error) {
+            console.error("Error fetching kartesius data:", error);
+        } finally {
+            setLoading(false);
+        }
     }, [selectedYear]);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
 
     const handleDownloadChart = async () => {
         if (!chartRef.current) return;
@@ -199,7 +223,7 @@ export default function DiagramKartesiusPage() {
                     onChange={(e) => setSelectedYear(e.target.value)}
                     className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#137fec] focus:border-transparent text-slate-700 bg-slate-50"
                 >
-                    {[CURRENT_YEAR + 1, CURRENT_YEAR, CURRENT_YEAR - 1].map(y => (
+                    {(availableYears.length > 0 ? availableYears : [CURRENT_YEAR + 1, CURRENT_YEAR, CURRENT_YEAR - 1]).map(y => (
                         <option key={y} value={y}>Tahun {y}</option>
                     ))}
                 </select>
@@ -214,6 +238,17 @@ export default function DiagramKartesiusPage() {
                         <option key={u.id} value={u.id}>{u.name}</option>
                     ))}
                 </select>
+
+                <button
+                    type="button"
+                    onClick={() => fetchData()}
+                    className="flex items-center space-x-2 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg text-sm text-slate-700 font-medium transition-colors shadow-sm ml-auto"
+                    disabled={loading}
+                    title="Refresh Data"
+                >
+                    <RotateCw size={14} className={loading ? "animate-spin animate-infinite" : ""} />
+                    <span>Refresh</span>
+                </button>
             </div>
 
             {loading ? (

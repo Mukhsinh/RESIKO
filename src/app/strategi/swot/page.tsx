@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { PageHeader } from '@/components/SharedUI';
 import FormInputAI from '@/components/FormInputAI';
-import { Layers, Zap, Target, Shield, AlertTriangle, Save, Loader2, Plus, Trash2, CheckCircle2 } from 'lucide-react';
+import { Layers, Zap, Target, Shield, AlertTriangle, Save, Loader2, Plus, Trash2, CheckCircle2, Edit, RotateCw } from 'lucide-react';
 import { useUserProfile } from '@/hooks/useUserProfile';
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -14,13 +14,14 @@ interface SwotItem {
     deskripsi: string;
     bobot: number;
     ranking: number;
+    isEditing?: boolean;
 }
 
 type SwotCategory = 'kekuatan' | 'kelemahan' | 'peluang' | 'ancaman';
 
 export default function SWOTPage() {
     const { profile } = useUserProfile();
-    const [units, setUnits] = useState<{ id: string; name: string }[]>([]);
+    const [units, setUnits] = useState<{ id: string; nama_unit: string }[]>([]);
     const [unitId, setUnitId] = useState('');
     const [year, setYear] = useState(String(CURRENT_YEAR));
 
@@ -35,15 +36,15 @@ export default function SWOTPage() {
     const [savedCat, setSavedCat] = useState<SwotCategory | null>(null);
 
     useEffect(() => {
-        supabase.from('master_work_units').select('id, name').then(({ data: u, error }: { data: any; error: any }) => {
+        supabase.from('unit_kerja').select('id, nama_unit').order('nama_unit').then(({ data: u, error }: { data: any; error: any }) => {
             if (error) {
                 console.error('Error fetching units:', error);
                 return;
             }
             setUnits(u ?? []);
             if (u && u.length) {
-                if (profile?.role === 'user_unit' && profile.unit_kerja_name) {
-                    const matchedUnit = u.find((unit: any) => unit.name.toLowerCase() === profile.unit_kerja_name?.toLowerCase());
+                if (profile?.role === 'user_unit' && profile.unit_kerja_id) {
+                    const matchedUnit = u.find((unit: any) => unit.id === profile.unit_kerja_id);
                     if (matchedUnit) {
                         setUnitId(matchedUnit.id);
                         return;
@@ -85,7 +86,8 @@ export default function SWOTPage() {
                             id: item.id,
                             deskripsi: item.deskripsi,
                             bobot: item.bobot || 0,
-                            ranking: item.ranking || 1
+                            ranking: item.ranking || 1,
+                            isEditing: false
                         });
                     });
                     setForm(grouped);
@@ -142,7 +144,7 @@ export default function SWOTPage() {
     const addItem = (cat: SwotCategory) => {
         setForm(prev => ({
             ...prev,
-            [cat]: [...prev[cat], { deskripsi: '', bobot: 0, ranking: 1 }]
+            [cat]: [...prev[cat], { deskripsi: '', bobot: 0, ranking: 1, isEditing: true }]
         }));
     };
 
@@ -178,11 +180,11 @@ export default function SWOTPage() {
                     <div className="flex gap-3 flex-wrap">
                         {profile?.role === 'user_unit' ? (
                             <div className="form-input w-52 bg-slate-100 text-slate-600 cursor-not-allowed">
-                                {units.find(u => u.id === unitId)?.name || 'Unit Kerja Anda'}
+                                {units.find(u => u.id === unitId)?.nama_unit || 'Unit Kerja Anda'}
                             </div>
                         ) : (
                             <select className="form-input w-52" value={unitId} onChange={e => setUnitId(e.target.value)}>
-                                {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                                {units.map(u => <option key={u.id} value={u.id}>{u.nama_unit}</option>)}
                             </select>
                         )}
                         <select className="form-input w-32" value={year} onChange={e => setYear(e.target.value)}>
@@ -240,58 +242,130 @@ export default function SWOTPage() {
                                         Belum ada data. Klik Tambah Uraian untuk memasukkan item.
                                     </div>
                                 ) : (
-                                    form[q.key as SwotCategory].map((item, index) => (
-                                        <div key={index} className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 relative group">
-                                            <button
-                                                type="button"
-                                                onClick={() => removeItem(q.key as SwotCategory, index)}
-                                                className="absolute -top-2 -right-2 bg-rose-100 text-rose-600 p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-rose-200 z-10 shadow-sm"
-                                                title="Hapus uraian ini"
-                                            >
-                                                <Trash2 size={14} />
-                                            </button>
+                                    <div className="space-y-3">
+                                        {form[q.key as SwotCategory].map((item, index) => {
+                                            const isEditing = item.isEditing ?? false;
 
-                                            <FormInputAI
-                                                label={`Inventarisasi ${q.label} SWOT`}
-                                                placeholder={q.placeholder}
-                                                value={item.deskripsi}
-                                                onChange={v => updateItem(q.key as SwotCategory, index, 'deskripsi', v)}
-                                                rows={2}
-                                            />
+                                            if (!isEditing) {
+                                                return (
+                                                    <div key={index} className="flex flex-col sm:flex-row sm:items-center justify-between bg-white px-4 py-3 rounded-lg border border-slate-200/80 shadow-sm gap-3 transition-all hover:border-slate-300">
+                                                        <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                                                            <span className="text-xs font-bold text-slate-400 bg-slate-100 w-5 h-5 flex items-center justify-center rounded-full shrink-0 mt-0.5">{index + 1}</span>
+                                                            <p className="text-sm font-semibold text-slate-700 break-words leading-relaxed whitespace-pre-wrap">{item.deskripsi}</p>
+                                                        </div>
+                                                        <div className="flex items-center justify-between sm:justify-end gap-5 shrink-0 border-t sm:border-t-0 pt-2 sm:pt-0">
+                                                            <div className="flex gap-4 text-xs font-bold text-slate-600">
+                                                                <div className="text-center">
+                                                                    <span className="text-[9px] text-slate-400 block font-bold uppercase tracking-wider">Bobot</span>
+                                                                    <span className="text-slate-700">{item.bobot}</span>
+                                                                </div>
+                                                                <div className="text-center">
+                                                                    <span className="text-[9px] text-slate-400 block font-bold uppercase tracking-wider">Ranking</span>
+                                                                    <span className="text-slate-700">{item.ranking}</span>
+                                                                </div>
+                                                                <div className="text-center">
+                                                                    <span className="text-[9px] text-slate-400 block font-bold uppercase tracking-wider">Skor</span>
+                                                                    <span className="text-indigo-600 font-extrabold">{(item.bobot * item.ranking).toFixed(2)}</span>
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex items-center gap-1.5 border-l border-slate-100 pl-3">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => updateItem(q.key as SwotCategory, index, 'isEditing', true)}
+                                                                    className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                                                                    title="Edit Item"
+                                                                >
+                                                                    <Edit size={14} />
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => removeItem(q.key as SwotCategory, index)}
+                                                                    className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                                                                    title="Hapus Item"
+                                                                >
+                                                                    <Trash2 size={14} />
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            }
 
-                                            <div className="grid grid-cols-3 gap-3 mt-4">
-                                                <div>
-                                                    <label className="form-label mb-1 text-xs">Bobot (0-100)</label>
-                                                    <input
-                                                        type="number"
-                                                        min="0"
-                                                        max="100"
-                                                        step="0.01"
-                                                        className="form-input text-sm"
-                                                        value={item.bobot || ''}
-                                                        onChange={e => updateItem(q.key as SwotCategory, index, 'bobot', parseFloat(e.target.value) || 0)}
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="form-label mb-1 text-xs">Ranking (1-5)</label>
-                                                    <input
-                                                        type="number"
-                                                        min="1"
-                                                        max="5"
-                                                        className="form-input text-sm"
-                                                        value={item.ranking || ''}
-                                                        onChange={e => updateItem(q.key as SwotCategory, index, 'ranking', parseInt(e.target.value) || 1)}
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="form-label mb-1 text-xs">Skor</label>
-                                                    <div className="form-input text-sm bg-slate-50 text-slate-500 flex items-center">
-                                                        {((item.bobot || 0) * (item.ranking || 1)).toFixed(2)}
+                                            return (
+                                                <div key={index} className="bg-white p-4 rounded-lg shadow-sm border border-indigo-200 bg-indigo-50/5 relative">
+                                                    <div className="flex items-start gap-2.5 mb-3">
+                                                        <span className="text-xs font-bold text-white bg-[#137fec] w-5 h-5 flex items-center justify-center rounded-full shrink-0 mt-1">{index + 1}</span>
+                                                        <div className="flex-1 min-w-0">
+                                                            <FormInputAI
+                                                                label={`Inventarisasi ${q.label}`}
+                                                                placeholder={q.placeholder}
+                                                                value={item.deskripsi}
+                                                                onChange={v => updateItem(q.key as SwotCategory, index, 'deskripsi', v)}
+                                                                rows={2}
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 items-end">
+                                                        <div>
+                                                            <label className="form-label mb-1 text-[10px] uppercase font-bold text-slate-400">Bobot (0-100)</label>
+                                                            <input
+                                                                type="number"
+                                                                min="0"
+                                                                max="100"
+                                                                step="0.01"
+                                                                className="form-input text-xs py-1.5"
+                                                                value={item.bobot || ''}
+                                                                onChange={e => updateItem(q.key as SwotCategory, index, 'bobot', parseFloat(e.target.value) || 0)}
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="form-label mb-1 text-[10px] uppercase font-bold text-slate-400">Ranking (1-5)</label>
+                                                            <input
+                                                                type="number"
+                                                                min="1"
+                                                                max="5"
+                                                                className="form-input text-xs py-1.5"
+                                                                value={item.ranking || ''}
+                                                                onChange={e => updateItem(q.key as SwotCategory, index, 'ranking', parseInt(e.target.value) || 1)}
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="form-label mb-1 text-[10px] uppercase font-bold text-slate-400">Skor</label>
+                                                            <div className="form-input text-xs py-1.5 bg-slate-50 text-slate-500 font-bold flex items-center">
+                                                                {((item.bobot || 0) * (item.ranking || 1)).toFixed(2)}
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex gap-1.5">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    if (!item.id) {
+                                                                        removeItem(q.key as SwotCategory, index);
+                                                                    } else {
+                                                                        updateItem(q.key as SwotCategory, index, 'isEditing', false);
+                                                                    }
+                                                                }}
+                                                                className="btn-secondary py-1.5 text-[11px] flex-1"
+                                                                title="Batal"
+                                                            >
+                                                                Batal
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => updateItem(q.key as SwotCategory, index, 'isEditing', false)}
+                                                                className="btn-primary py-1.5 text-[11px] flex-1 bg-indigo-600 hover:bg-indigo-700"
+                                                                title="Selesai"
+                                                                disabled={!item.deskripsi.trim()}
+                                                            >
+                                                                Selesai
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        </div>
-                                    ))
+                                            );
+                                        })}
+                                    </div>
                                 )}
                             </div>
 

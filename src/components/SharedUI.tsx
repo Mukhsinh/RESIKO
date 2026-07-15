@@ -54,7 +54,7 @@ interface FilterBarProps {
 }
 
 const currentYear = new Date().getFullYear();
-const defaultYears = [currentYear - 1, currentYear, currentYear + 1];
+const defaultYears = Array.from({ length: 12 }, (_, i) => currentYear - 2 + i); // e.g. 2024 to 2035 if currentYear is 2026
 
 export function FilterBar({
     searchValue, onSearchChange, searchPlaceholder,

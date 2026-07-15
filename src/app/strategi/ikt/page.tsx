@@ -10,6 +10,16 @@ import { useUserProfile } from '@/hooks/useUserProfile';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
+// Helper to reliably parse numeric inputs even if users enter symbols/letters like %, currency symbols, etc.
+const parseNumericValue = (val: string | number | null | undefined): number | null => {
+    if (val === null || val === undefined) return null;
+    const str = String(val).trim();
+    if (!str) return null;
+    const cleaned = str.replace(/[^\d.,-]/g, '').replace(/,/g, '.');
+    const num = parseFloat(cleaned);
+    return isNaN(num) ? null : num;
+};
+
 interface IKT {
     id: string;
     rencana_strategis_id?: string;
@@ -80,6 +90,7 @@ export default function IKTPage() {
     const [year, setYear] = useState(String(CURRENT_YEAR));
     const [showModal, setShowModal] = useState(false);
     const [editId, setEditId] = useState<string | null>(null);
+    const [selectedRow, setSelectedRow] = useState<IKT | null>(null);
     const [form, setForm] = useState<Form>(defaultForm);
     const [saving, setSaving] = useState(false);
     const [hasUnitKerjaId, setHasUnitKerjaId] = useState<boolean | null>(null);
@@ -158,6 +169,7 @@ export default function IKTPage() {
 
     const openAdd = () => {
         setEditId(null);
+        setSelectedRow(null);
         const newForm = { ...defaultForm };
         if (profile?.role === 'user_unit' && profile.unit_kerja_id) {
             newForm.unit_kerja_id = profile.unit_kerja_id;
@@ -168,6 +180,7 @@ export default function IKTPage() {
 
     const openEdit = async (row: IKT) => {
         setEditId(row.id);
+        setSelectedRow(row);
 
         let matchingRktId = '';
         if (row.unit_kerja_id) {
@@ -183,6 +196,27 @@ export default function IKTPage() {
             }
         }
 
+        // Search and load all sibling target years for this indicator & unit kerja
+        let targets = [{ target_tahun: row.target_tahun || CURRENT_YEAR, target_nilai: String(row.target_nilai ?? '') }];
+
+        try {
+            const { data: siblings } = await supabase
+                .from('indikator_kinerja_utama')
+                .select('id, target_tahun, target_nilai')
+                .eq('indikator', row.indikator)
+                .eq('unit_kerja_id', row.unit_kerja_id)
+                .order('target_tahun', { ascending: true });
+
+            if (siblings && siblings.length > 0) {
+                targets = siblings.map((s: any) => ({
+                    target_tahun: s.target_tahun,
+                    target_nilai: String(s.target_nilai ?? '')
+                }));
+            }
+        } catch (err) {
+            console.error('Error fetching sibling targets for Edit:', err);
+        }
+
         setForm({
             rkt_id: matchingRktId,
             sasaran_strategis: (row as any).sasaran_strategi?.sasaran || '',
@@ -191,15 +225,16 @@ export default function IKTPage() {
                 id: row.id,
                 indikator: row.indikator,
                 baseline_tahun: row.baseline_tahun || CURRENT_YEAR - 1,
-                baseline_nilai: String(row.baseline_nilai || ''),
+                baseline_nilai: String(row.baseline_nilai ?? ''),
                 satuan: row.satuan || '',
                 pic: row.pic || '',
                 initiatif_strategi: row.initiatif_strategi || '',
-                targets: [{ target_tahun: row.target_tahun || CURRENT_YEAR, target_nilai: String(row.target_nilai || '') }]
+                targets: targets
             }]
         });
         setShowModal(true);
     };
+
     const handleDelete = async (row: IKT) => {
         if (!confirm(`Hapus indikator "${row.indikator.slice(0, 50)}"?`)) return;
         await supabase.from('indikator_kinerja_utama').delete().eq('id', row.id);
@@ -233,7 +268,7 @@ export default function IKTPage() {
             if (form.sasaran_strategis && form.sasaran_strategis.trim()) {
                 const cleanSasaran = form.sasaran_strategis.trim();
 
-                // 1. Search for existing sasaran_strategi with same text and renstra_id
+                // Search for existing sasaran_strategi matching cleanSasaran & renstra_id
                 const { data: existingSas } = await supabase
                     .from('sasaran_strategi')
                     .select('id')
@@ -244,7 +279,7 @@ export default function IKTPage() {
                 if (existingSas && existingSas.length > 0) {
                     resolvedSasaranId = existingSas[0].id;
                 } else if (targetRenstraId) {
-                    // 2. Insert new sasaran_strategi since it doesn't exist
+                    // Insert new sasaran since it doesn't exist
                     const { data: newSas, error: insertErr } = await supabase
                         .from('sasaran_strategi')
                         .insert({
@@ -272,9 +307,9 @@ export default function IKTPage() {
                             sasaran_strategi_id: resolvedSasId,
                             indikator: ind.indikator,
                             baseline_tahun: ind.baseline_tahun,
-                            baseline_nilai: ind.baseline_nilai ? Number(ind.baseline_nilai) : null,
+                            baseline_nilai: parseNumericValue(ind.baseline_nilai),
                             target_tahun: tgt.target_tahun,
-                            target_nilai: tgt.target_nilai ? Number(tgt.target_nilai) : null,
+                            target_nilai: parseNumericValue(tgt.target_nilai),
                             satuan: ind.satuan,
                             pic: ind.pic,
                             initiatif_strategi: ind.initiatif_strategi
@@ -290,8 +325,45 @@ export default function IKTPage() {
             const finalPayloads = await cleanPayload(payloads);
 
             let result;
-            if (editId) {
-                result = await supabase.from('indikator_kinerja_utama').update(finalPayloads[0]).eq('id', editId);
+            if (editId && selectedRow) {
+                // Query existing sibling rows for this indicator and unit_kerja_id BEFORE the update
+                const { data: siblings } = await supabase
+                    .from('indikator_kinerja_utama')
+                    .select('id, target_tahun')
+                    .eq('indikator', selectedRow.indikator)
+                    .eq('unit_kerja_id', selectedRow.unit_kerja_id);
+
+                // We will match targets in finalPayloads to siblings
+                for (const p of finalPayloads) {
+                    const existing = siblings?.find((s: any) => s.target_tahun === p.target_tahun);
+                    if (existing) {
+                        // Update existing row
+                        const { error: updErr } = await supabase
+                            .from('indikator_kinerja_utama')
+                            .update(p)
+                            .eq('id', existing.id);
+                        if (updErr) console.error('Error updating target:', updErr);
+                    } else {
+                        // Insert new row if target_tahun didn't exist before
+                        const { error: insErr } = await supabase
+                            .from('indikator_kinerja_utama')
+                            .insert(p);
+                        if (insErr) console.error('Error inserting new target year/row:', insErr);
+                    }
+                }
+
+                // Delete sibling rows that are no longer in this edit session's targets
+                const payloadYears = finalPayloads.map(p => p.target_tahun);
+                const toDelete = siblings?.filter((s: any) => !payloadYears.includes(s.target_tahun)) || [];
+                for (const d of toDelete) {
+                    const { error: delErr } = await supabase
+                        .from('indikator_kinerja_utama')
+                        .delete()
+                        .eq('id', d.id);
+                    if (delErr) console.error('Error deleting removed target year:', delErr);
+                }
+
+                result = { error: null }; // Mock success
             } else {
                 result = await supabase.from('indikator_kinerja_utama').insert(finalPayloads);
             }
@@ -315,8 +387,8 @@ export default function IKTPage() {
         { key: 'target_tahun', label: 'Tahun', className: 'w-16 text-center' },
         { key: 'unit_kerja_id', label: 'Unit', render: r => r.unit_kerja?.nama_unit ?? '-' },
         { key: 'indikator', label: 'Indikator Kinerja', render: r => <span className="line-clamp-2">{r.indikator}</span> },
-        { key: 'baseline_nilai', label: 'Baseline', className: 'text-center', render: r => r.baseline_nilai ?? '-' },
-        { key: 'target_nilai', label: 'Target', className: 'text-center', render: r => r.target_nilai ?? '-' },
+        { key: 'baseline_nilai', label: 'Baseline', className: 'text-center', render: r => r.baseline_nilai != null ? `${r.baseline_nilai} ${r.satuan ?? ''}`.trim() : '-' },
+        { key: 'target_nilai', label: 'Target', className: 'text-center', render: r => r.target_nilai != null ? `${r.target_nilai} ${r.satuan ?? ''}`.trim() : '-' },
         { key: 'satuan', label: 'Satuan', className: 'text-center' },
         { key: 'pic', label: 'PIC', className: 'text-center' },
     ];
@@ -338,13 +410,13 @@ export default function IKTPage() {
                 <ScoreCard
                     icon={<CheckCircle2 size={22} className="text-emerald-500" />}
                     title="Dengan Target"
-                    value={data.filter(d => d.target_nilai).length}
+                    value={data.filter(d => d.target_nilai != null).length}
                     colorClass="bg-emerald-50 border-emerald-100"
                 />
                 <ScoreCard
                     icon={<AlertCircle size={22} className="text-amber-500" />}
                     title="Dengan Baseline"
-                    value={data.filter(d => d.baseline_nilai).length}
+                    value={data.filter(d => d.baseline_nilai != null).length}
                     colorClass="bg-amber-50 border-amber-100"
                 />
                 <ScoreCard
@@ -520,7 +592,7 @@ export default function IKTPage() {
                                         <div className="space-y-3 bg-white p-4 rounded-lg border border-slate-100 shadow-sm">
                                             <div className="flex items-center justify-between">
                                                 <label className="form-label !mb-0 font-bold text-slate-700 flex items-center gap-2"><Target size={14} /> Target Capaian</label>
-                                                {!editId && ind.targets.length < 5 && (
+                                                {ind.targets.length < 5 && (
                                                     <button type="button" onClick={() => {
                                                         const newInds = [...form.indikators];
                                                         const nextYear = newInds[indIdx].targets.length > 0
@@ -560,10 +632,10 @@ export default function IKTPage() {
                                                                     newInds[indIdx].targets[tgtIdx].target_nilai = e.target.value;
                                                                     setForm(f => ({ ...f, indikators: newInds }));
                                                                 }}
-                                                                placeholder="Nilai Target (Contoh: 100%)"
+                                                                placeholder="Nilai Target (Contoh: 100)"
                                                             />
                                                         </div>
-                                                        {!editId && ind.targets.length > 1 && (
+                                                        {ind.targets.length > 1 && (
                                                             <button type="button" onClick={() => {
                                                                 const newInds = [...form.indikators];
                                                                 newInds[indIdx].targets = newInds[indIdx].targets.filter((_, i) => i !== tgtIdx);
@@ -575,7 +647,7 @@ export default function IKTPage() {
                                                     </div>
                                                 ))}
                                             </div>
-                                            {editId && <p className="text-[10px] text-amber-600 mt-1 italic">* Dalam mode Edit, Anda hanya dapat mengubah satu target tahunan spesifik ini.</p>}
+                                            {editId && <p className="text-[10px] text-amber-600 mt-1 italic">* Dalam mode Edit, Anda dapat mengelola seluruh target tahunan untuk indikator ini.</p>}
                                         </div>
 
                                         <div className="grid grid-cols-2 gap-4">
@@ -604,61 +676,33 @@ export default function IKTPage() {
                                                         newInds[indIdx].pic = e.target.value;
                                                         setForm(f => ({ ...f, indikators: newInds }));
                                                     }}
+                                                    placeholder="Masukkan PIC..."
                                                 />
                                             </div>
                                         </div>
+
                                         <div>
                                             <label className="form-label">Inisiatif Strategi</label>
-                                            <textarea
+                                            <input
+                                                type="text"
                                                 className="form-input"
-                                                rows={2}
                                                 value={ind.initiatif_strategi}
                                                 onChange={e => {
                                                     const newInds = [...form.indikators];
                                                     newInds[indIdx].initiatif_strategi = e.target.value;
                                                     setForm(f => ({ ...f, indikators: newInds }));
                                                 }}
-                                                placeholder="Deskripsi inisiatif strategi..."
+                                                placeholder="Contoh: Rencana aksi taktis..."
                                             />
                                         </div>
                                     </div>
                                 ))}
                             </div>
 
-                            {!editId && (
-                                <button type="button" onClick={() => {
-                                    const newInds = [...form.indikators, {
-                                        id: Date.now().toString(),
-                                        indikator: '',
-                                        baseline_tahun: CURRENT_YEAR - 1,
-                                        baseline_nilai: '',
-                                        satuan: '',
-                                        pic: '',
-                                        initiatif_strategi: '',
-                                        targets: [{ target_tahun: CURRENT_YEAR, target_nilai: '' }]
-                                    }];
-                                    setForm(f => ({ ...f, indikators: newInds }));
-                                }} className="w-full py-3 border-2 border-dashed border-blue-200 text-blue-600 rounded-xl hover:bg-blue-50 transition-colors font-medium text-sm flex items-center justify-center gap-2">
-                                    <Plus size={16} /> Tambah Indikator Kinerja Baru
-                                </button>
-                            )}
-
-                            <div className="flex justify-end space-x-3 pt-4 border-t border-slate-100">
-                                <button type="button" className="btn-secondary px-6" onClick={() => setShowModal(false)}>
-                                    Batal
-                                </button>
-                                <button type="submit" className="btn-primary px-6" disabled={saving}>
-                                    {saving ? (
-                                        <>
-                                            <Loader2 size={15} className="animate-spin" />
-                                            <span>Menyimpan...</span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Save size={15} />
-                                            <span>Simpan Indikator</span>
-                                        </>
-                                    )}
+                            <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
+                                <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>Batal</button>
+                                <button type="submit" className="btn-primary" disabled={saving}>
+                                    {saving ? <><Loader2 size={15} className="animate-spin" /><span>Menyimpan...</span></> : <><Save size={15} /><span>Simpan</span></>}
                                 </button>
                             </div>
                         </form>
