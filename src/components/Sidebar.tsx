@@ -314,6 +314,37 @@ export default function Sidebar() {
                     </div>
                 ))}
             </nav>
+
+            {/* User Profile Info Card at Bottom */}
+            {profile && (
+                <div className="mt-auto border-t border-slate-100 p-4 bg-slate-50/50">
+                    <div className="flex flex-col space-y-2">
+                        <div className="flex items-center space-x-3">
+                            <div className="w-9 h-9 rounded-xl bg-[#137fec]/10 flex items-center justify-center text-[#137fec] font-black shrink-0 text-xs">
+                                {profile.email ? profile.email.substring(0, 2).toUpperCase() : 'UR'}
+                            </div>
+                            <div className="overflow-hidden">
+                                <p className="text-xs font-bold text-slate-700 truncate" title={profile.email}>
+                                    {profile.email}
+                                </p>
+                                <div className="flex items-center space-x-1.5 mt-0.5">
+                                    <span className="text-[9px] font-black text-[#137fec] bg-blue-50 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                        {profile.role === 'superadmin' ? 'superadmin' : profile.role}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-bold bg-white border border-slate-100/80 rounded-lg p-2 flex flex-col space-y-1">
+                            <div className="flex justify-between">
+                                <span className="text-slate-400">Unit:</span>
+                                <span className="font-extrabold text-slate-700 truncate max-w-[140px]" title={profile.unit_kerja_name}>
+                                    {profile.unit_kerja_name || 'Semua Unit'}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 

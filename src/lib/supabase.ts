@@ -26,6 +26,9 @@ function getSupabaseInstance() {
                     }
                 } : undefined,
                 storageKey: 'sb-access-token',
+                lock: async (name: string, acquireTimeout: number, fn: () => Promise<any>) => {
+                    return await fn();
+                },
             }
         });
     }

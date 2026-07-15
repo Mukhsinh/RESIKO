@@ -98,28 +98,6 @@ export default function DashboardPage() {
 
     return (
         <div className="space-y-8 animate-in fade-in duration-700">
-            {/* Info Strip (Welcome) */}
-            <div className="card flex items-center space-x-5 p-6 bg-gradient-to-r from-blue-50 to-indigo-50/50 border-l-4 border-[#137fec] relative overflow-hidden group">
-                <div className="absolute right-0 top-0 w-32 h-32 bg-[#137fec]/5 rounded-full -translate-y-16 translate-x-16 blur-2xl group-hover:bg-[#137fec]/10 transition-colors"></div>
-                <div className="w-16 h-16 rounded-2xl bg-white shadow-md flex items-center justify-center shrink-0 relative z-10 transition-transform group-hover:scale-105">
-                    <Clock size={32} className="text-[#137fec]" />
-                </div>
-                <div className="relative z-10">
-                    <p className="text-2xl font-black text-slate-800 tracking-tight">
-                        Selamat Datang, {profile?.full_name?.split(' ')[0]} 👋
-                    </p>
-                    <div className="flex items-center space-x-2 mt-1 px-2.5 py-1 bg-white/60 rounded-lg w-fit border border-blue-100/50 backdrop-blur-sm">
-                        <span className="text-[10px] font-black text-[#137fec] uppercase tracking-tighter bg-blue-50 px-1.5 py-0.5 rounded">
-                            {profile?.role}
-                        </span>
-                        <span className="text-slate-400 font-bold text-xs">•</span>
-                        <p className="text-xs text-slate-500 font-bold tracking-tight">
-                            {profile?.unit_kerja_name} — <span className="text-[#137fec]">{settings?.nama_rs}</span>
-                        </p>
-                    </div>
-                </div>
-            </div>
-
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>

@@ -5,8 +5,33 @@ let _supabaseAdminInstance: ReturnType<typeof createClient> | null = null;
 
 function getSupabaseAdmin() {
     if (!_supabaseAdminInstance) {
-        const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-        const key = process.env.NEXT_PUBLIC_SERVICE_ROLE_KEY;
+        let url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        let key = process.env.NEXT_PUBLIC_SERVICE_ROLE_KEY;
+
+        if (!url || !key) {
+            try {
+                const fs = require('fs');
+                const path = require('path');
+                const envPath = path.resolve(process.cwd(), '.env.local');
+                if (fs.existsSync(envPath)) {
+                    const envData = fs.readFileSync(envPath, 'utf8');
+                    envData.split('\n').forEach((line: string) => {
+                        const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)\s*$/);
+                        if (match) {
+                            const k = match[1];
+                            let val = match[2].trim();
+                            if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1);
+                            if (val.startsWith("'") && val.endsWith("'")) val = val.slice(1, -1);
+                            if (k === 'NEXT_PUBLIC_SUPABASE_URL') url = val;
+                            if (k === 'NEXT_PUBLIC_SERVICE_ROLE_KEY') key = val;
+                        }
+                    });
+                }
+            } catch (e) {
+                console.error('Failed to load env variables manually:', e);
+            }
+        }
+
         if (!url || !key) {
             throw new Error('Supabase URL atau Service Role Key belum dikonfigurasi.');
         }

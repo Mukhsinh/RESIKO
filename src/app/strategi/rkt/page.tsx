@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { PageHeader, ScoreCard, FilterBar, TopActionBar } from '@/components/SharedUI';
 import DataTable, { type Column } from '@/components/DataTable';
 import FormInputAI from '@/components/FormInputAI';
-import { Plus, Download, Upload, FileText, Calendar, Target, CheckCircle2, Clock, Save, X, Loader2 } from 'lucide-react';
+import { Plus, Download, Upload, FileText, Calendar, Target, CheckCircle2, Clock, Save, X, Loader2, Search, ChevronDown } from 'lucide-react';
 import { useUserProfile } from '@/hooks/useUserProfile';
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -75,6 +75,12 @@ export default function RKTPage() {
     // Renstra items
     const [renstraOptions, setRenstraOptions] = useState<RenstraOption[]>([]);
     const [loadingRenstra, setLoadingRenstra] = useState(false);
+
+    // Custom dropdown state for Renstra selector
+    const [renstraDropdownOpen, setRenstraDropdownOpen] = useState(false);
+    const [renstraSearchQuery, setRenstraSearchQuery] = useState('');
+    const renstraDropdownRef = useRef<HTMLDivElement>(null);
+    const renstraSearchRef = useRef<HTMLInputElement>(null);
 
     const fetchRenstraOptions = useCallback(async () => {
         setLoadingRenstra(true);
@@ -238,8 +244,8 @@ export default function RKTPage() {
                 </div>
             )
         },
-        { key: 'program', label: 'Program', render: r => <span className="line-clamp-1">{r.program}</span> },
-        { key: 'kegiatan', label: 'Kegiatan', render: r => <span className="line-clamp-2">{r.kegiatan}</span> },
+        { key: 'program', label: 'Program', render: r => <span className="line-clamp-2" title={r.program}>{r.program}</span> },
+        { key: 'kegiatan', label: 'Kegiatan', render: r => <span className="line-clamp-3" title={r.kegiatan}>{r.kegiatan}</span> },
         { key: 'triwulan', label: 'TW', className: 'text-center' },
         { key: 'target', label: 'Target', className: 'text-center' },
         { key: 'realisasi', label: 'Realisasi', className: 'text-center', render: r => r.realisasi || '-' },
@@ -251,6 +257,44 @@ export default function RKTPage() {
         const key = opt.misi_nomor ? `Misi ${opt.misi_nomor}` : 'Tanpa Misi';
         if (!acc[key]) acc[key] = { items: [], isi: opt.misi_isi };
         acc[key].items.push(opt);
+        return acc;
+    }, {} as Record<string, { items: RenstraOption[], isi?: string }>);
+
+    // Close dropdown when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (renstraDropdownRef.current && !renstraDropdownRef.current.contains(event.target as Node)) {
+                setRenstraDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    // Focus search input on dropdown open
+    useEffect(() => {
+        if (renstraDropdownOpen && renstraSearchRef.current) {
+            renstraSearchRef.current.focus();
+        }
+    }, [renstraDropdownOpen]);
+
+    // Get selected renstra display text
+    const selectedRenstra = renstraOptions.find(r => r.id === form.rencana_strategis_id);
+    const selectedRenstraLabel = selectedRenstra
+        ? `${selectedRenstra.misi_nomor ? `Misi ${selectedRenstra.misi_nomor} — ` : ''}${selectedRenstra.nama_rencana}`
+        : '';
+
+    // Filter renstra options based on search
+    const filteredGroupedRenstra = Object.entries(groupedRenstraOptions).reduce((acc, [misiGroup, { items, isi }]) => {
+        const q = renstraSearchQuery.toLowerCase();
+        const filteredItems = items.filter(opt =>
+            opt.nama_rencana.toLowerCase().includes(q) ||
+            (isi && isi.toLowerCase().includes(q)) ||
+            misiGroup.toLowerCase().includes(q)
+        );
+        if (filteredItems.length > 0) {
+            acc[misiGroup] = { items: filteredItems, isi };
+        }
         return acc;
     }, {} as Record<string, { items: RenstraOption[], isi?: string }>);
 
@@ -307,23 +351,79 @@ export default function RKTPage() {
                                     <label className="form-label text-indigo-800 font-medium flex items-center gap-2">
                                         <Target size={14} /> Rencana Strategis Yang Dituju (Opsional)
                                     </label>
-                                    <select
-                                        className="form-input bg-white"
-                                        value={form.rencana_strategis_id}
-                                        onChange={e => setForm(f => ({ ...f, rencana_strategis_id: e.target.value }))}
-                                        disabled={loadingRenstra}
-                                    >
-                                        <option value="">-- Tidak dikaitkan dengan Renstra spesifik --</option>
-                                        {Object.entries(groupedRenstraOptions).map(([misiGroup, { items, isi }]) => (
-                                            <optgroup key={misiGroup} label={`${misiGroup}${isi ? ' - ' + isi.substring(0, 50) + '...' : ''}`}>
-                                                {items.map(opt => (
-                                                    <option key={opt.id} value={opt.id}>
-                                                        {opt.nama_rencana.substring(0, 100)}{opt.nama_rencana.length > 100 ? '...' : ''}
-                                                    </option>
-                                                ))}
-                                            </optgroup>
-                                        ))}
-                                    </select>
+                                    <div ref={renstraDropdownRef} className="relative">
+                                        {/* Trigger Button */}
+                                        <button
+                                            type="button"
+                                            className="form-input bg-white text-left flex items-center justify-between gap-2 cursor-pointer"
+                                            onClick={() => { if (!loadingRenstra) { setRenstraDropdownOpen(!renstraDropdownOpen); setRenstraSearchQuery(''); } }}
+                                            disabled={loadingRenstra}
+                                        >
+                                            <span className={`block truncate ${!form.rencana_strategis_id ? 'text-slate-400' : 'text-slate-800'}`} title={selectedRenstraLabel || '-- Tidak dikaitkan dengan Renstra spesifik --'}>
+                                                {selectedRenstraLabel || '-- Tidak dikaitkan dengan Renstra spesifik --'}
+                                            </span>
+                                            <ChevronDown size={16} className={`shrink-0 text-slate-400 transition-transform ${renstraDropdownOpen ? 'rotate-180' : ''}`} />
+                                        </button>
+
+                                        {/* Dropdown Panel */}
+                                        {renstraDropdownOpen && (
+                                            <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-xl max-h-80 overflow-hidden flex flex-col" style={{ minWidth: '400px' }}>
+                                                {/* Search */}
+                                                <div className="p-2 border-b border-slate-100">
+                                                    <div className="relative">
+                                                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                                        <input
+                                                            ref={renstraSearchRef}
+                                                            type="text"
+                                                            className="w-full pl-8 pr-3 py-2 text-sm border border-slate-200 rounded-md focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
+                                                            placeholder="Cari rencana strategis..."
+                                                            value={renstraSearchQuery}
+                                                            onChange={e => setRenstraSearchQuery(e.target.value)}
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* Options List */}
+                                                <div className="overflow-y-auto flex-1">
+                                                    {/* Default option */}
+                                                    <button
+                                                        type="button"
+                                                        className={`w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 transition-colors ${!form.rencana_strategis_id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-slate-500 italic'
+                                                            }`}
+                                                        onClick={() => { setForm(f => ({ ...f, rencana_strategis_id: '' })); setRenstraDropdownOpen(false); }}
+                                                    >
+                                                        -- Tidak dikaitkan dengan Renstra spesifik --
+                                                    </button>
+
+                                                    {Object.entries(filteredGroupedRenstra).map(([misiGroup, { items, isi }]) => (
+                                                        <div key={misiGroup}>
+                                                            {/* Group Header */}
+                                                            <div className="px-4 py-2 bg-slate-50 border-y border-slate-100">
+                                                                <span className="text-xs font-bold text-indigo-700 uppercase tracking-wide">{misiGroup}</span>
+                                                                {isi && <span className="text-xs text-slate-500 ml-1">— {isi}</span>}
+                                                            </div>
+                                                            {/* Group Items */}
+                                                            {items.map(opt => (
+                                                                <button
+                                                                    key={opt.id}
+                                                                    type="button"
+                                                                    className={`w-full text-left px-5 py-2.5 text-sm hover:bg-blue-50 transition-colors leading-relaxed ${form.rencana_strategis_id === opt.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-slate-700'
+                                                                        }`}
+                                                                    onClick={() => { setForm(f => ({ ...f, rencana_strategis_id: opt.id })); setRenstraDropdownOpen(false); }}
+                                                                >
+                                                                    {opt.nama_rencana}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    ))}
+
+                                                    {Object.keys(filteredGroupedRenstra).length === 0 && (
+                                                        <div className="px-4 py-6 text-center text-sm text-slate-400">Tidak ada hasil ditemukan</div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
                                     <p className="text-xs text-slate-500 mt-1.5">Pilih Rencana Strategis (Renstra) terkait untuk turunan kegiatan RKT ini</p>
                                 </div>
                             </div>

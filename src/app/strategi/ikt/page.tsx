@@ -5,15 +5,17 @@ import { supabase } from '@/lib/supabase';
 import { PageHeader, ScoreCard, FilterBar, TopActionBar } from '@/components/SharedUI';
 import DataTable, { type Column } from '@/components/DataTable';
 import FormInputAI from '@/components/FormInputAI';
-import { Plus, Download, Upload, FileText, Target, TrendingUp, AlertCircle, CheckCircle2, Save, X, Loader2 } from 'lucide-react';
+import { Plus, Download, Upload, FileText, Target, TrendingUp, AlertCircle, CheckCircle2, Save, X, Loader2, Trash2 } from 'lucide-react';
 import { useUserProfile } from '@/hooks/useUserProfile';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
 interface IKT {
     id: string;
-    rencana_strategis_id: string;
+    rencana_strategis_id?: string;
+    rkt_id?: string;
     sasaran_strategi_id?: string;
+    sasaran_strategis?: string;
     indikator: string;
     baseline_tahun?: number;
     baseline_nilai?: number;
@@ -25,41 +27,52 @@ interface IKT {
     created_at: string;
     unit_kerja_id?: string;
     unit_kerja?: { nama_unit: string };
+    rkt?: { program: string; kegiatan: string };
 }
 
-interface Form {
-    rencana_strategis_id: string;
-    sasaran_strategi_id: string;
+interface FormTarget {
+    target_tahun: number;
+    target_nilai: string;
+}
+
+interface FormIndikator {
+    id: string; // UI key
     indikator: string;
     baseline_tahun: number;
     baseline_nilai: string;
-    target_tahun: number;
-    target_nilai: string;
     satuan: string;
-    initiatif_strategi: string;
     pic: string;
+    initiatif_strategi: string;
+    targets: FormTarget[];
+}
+
+interface Form {
+    rkt_id: string;
+    sasaran_strategis: string;
     unit_kerja_id: string;
+    indikators: FormIndikator[];
 }
 
 const defaultForm: Form = {
-    rencana_strategis_id: '',
-    sasaran_strategi_id: '',
-    indikator: '',
-    baseline_tahun: CURRENT_YEAR - 1,
-    baseline_nilai: '',
-    target_tahun: CURRENT_YEAR,
-    target_nilai: '',
-    satuan: '',
-    initiatif_strategi: '',
-    pic: '',
+    rkt_id: '',
+    sasaran_strategis: '',
     unit_kerja_id: '',
+    indikators: [{
+        id: 'init',
+        indikator: '',
+        baseline_tahun: CURRENT_YEAR - 1,
+        baseline_nilai: '',
+        satuan: '',
+        pic: '',
+        initiatif_strategi: '',
+        targets: [{ target_tahun: CURRENT_YEAR, target_nilai: '' }]
+    }]
 };
 
 export default function IKTPage() {
     const { profile } = useUserProfile();
     const [data, setData] = useState<IKT[]>([]);
-    const [renstraList, setRenstraList] = useState<{ id: string; nama_rencana: string }[]>([]);
-    const [sasaranList, setSasaranList] = useState<{ id: string; sasaran: string }[]>([]);
+    const [rktList, setRktList] = useState<{ id: string; program: string; kegiatan: string; rencana_strategis_id?: string; }[]>([]);
     const [units, setUnits] = useState<{ id: string; nama_unit: string }[]>([]);
     const [filterUnit, setFilterUnit] = useState<string>('all');
     const [loading, setLoading] = useState(true);
@@ -98,7 +111,9 @@ export default function IKTPage() {
         if (hasUnitKerjaId === null) return;
         setLoading(true);
         try {
-            const selectFields = hasUnitKerjaId ? '*, unit_kerja(nama_unit)' : '*';
+            const selectFields = hasUnitKerjaId
+                ? '*, unit_kerja(nama_unit), sasaran_strategi(sasaran)'
+                : '*, sasaran_strategi(sasaran)';
             let query = supabase.from('indikator_kinerja_utama').select(selectFields).order('created_at', { ascending: false });
             if (year) query = query.eq('target_tahun', Number(year));
             if (hasUnitKerjaId) {
@@ -125,15 +140,15 @@ export default function IKTPage() {
     useEffect(() => {
         if (hasUnitKerjaId === null) return;
         fetchData();
-        supabase.from('rencana_strategis').select('id, nama_rencana').then(({ data: r, error }: { data: any; error: any }) => {
-            if (error) console.error('Error fetching renstra:', error);
-            setRenstraList(r ?? []);
-        });
-        supabase.from('sasaran_strategi').select('id, sasaran').then(({ data: s, error }: { data: any; error: any }) => {
-            if (error) console.error('Error fetching sasaran:', error);
-            setSasaranList(s ?? []);
-        });
     }, [fetchData, hasUnitKerjaId]);
+
+    // React to unit changes in Add mode
+    useEffect(() => {
+        if (!form.unit_kerja_id) { setRktList([]); return; }
+        supabase.from('rkt').select('id, program, kegiatan, rencana_strategis_id').eq('unit_kerja_id', form.unit_kerja_id).then(({ data: r }: { data: any }) => {
+            if (r) setRktList(r as any);
+        });
+    }, [form.unit_kerja_id]);
 
     const filtered = data.filter(d =>
         (d.indikator || '').toLowerCase().includes(search.toLowerCase()) ||
@@ -150,20 +165,38 @@ export default function IKTPage() {
         setForm(newForm);
         setShowModal(true);
     };
-    const openEdit = (row: IKT) => {
+
+    const openEdit = async (row: IKT) => {
         setEditId(row.id);
+
+        let matchingRktId = '';
+        if (row.unit_kerja_id) {
+            const { data: rkts } = await supabase
+                .from('rkt')
+                .select('id, program, kegiatan, rencana_strategis_id')
+                .eq('unit_kerja_id', row.unit_kerja_id);
+
+            if (rkts) {
+                setRktList(rkts);
+                const match = rkts.find((r: any) => r.rencana_strategis_id === row.rencana_strategis_id);
+                if (match) matchingRktId = match.id;
+            }
+        }
+
         setForm({
-            rencana_strategis_id: row.rencana_strategis_id,
-            sasaran_strategi_id: row.sasaran_strategi_id || '',
-            indikator: row.indikator,
-            baseline_tahun: row.baseline_tahun || CURRENT_YEAR - 1,
-            baseline_nilai: String(row.baseline_nilai || ''),
-            target_tahun: row.target_tahun || CURRENT_YEAR,
-            target_nilai: String(row.target_nilai || ''),
-            satuan: row.satuan || '',
-            initiatif_strategi: row.initiatif_strategi || '',
-            pic: row.pic || '',
+            rkt_id: matchingRktId,
+            sasaran_strategis: (row as any).sasaran_strategi?.sasaran || '',
             unit_kerja_id: row.unit_kerja_id || '',
+            indikators: [{
+                id: row.id,
+                indikator: row.indikator,
+                baseline_tahun: row.baseline_tahun || CURRENT_YEAR - 1,
+                baseline_nilai: String(row.baseline_nilai || ''),
+                satuan: row.satuan || '',
+                pic: row.pic || '',
+                initiatif_strategi: row.initiatif_strategi || '',
+                targets: [{ target_tahun: row.target_tahun || CURRENT_YEAR, target_nilai: String(row.target_nilai || '') }]
+            }]
         });
         setShowModal(true);
     };
@@ -172,25 +205,97 @@ export default function IKTPage() {
         await supabase.from('indikator_kinerja_utama').delete().eq('id', row.id);
         fetchData();
     };
+
+    const cleanPayload = async (arr: any[]) => {
+        const { data: tb } = await supabase.from('indikator_kinerja_utama').select('*').limit(1);
+        if (!tb) return arr;
+        const validKeys = tb.length > 0 ? Object.keys(tb[0]) : ['rencana_strategis_id', 'sasaran_strategi_id', 'indikator', 'baseline_tahun', 'baseline_nilai', 'target_tahun', 'target_nilai', 'satuan', 'pic', 'initiatif_strategi', 'unit_kerja_id'];
+
+        return arr.map(obj => {
+            const cleaned: any = {};
+            for (let k of Object.keys(obj)) {
+                if (validKeys.includes(k)) cleaned[k] = obj[k];
+            }
+            return cleaned;
+        });
+    };
+
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         setSaving(true);
         try {
-            const payload: any = {
-                ...form,
-                baseline_nilai: form.baseline_nilai ? Number(form.baseline_nilai) : null,
-                target_nilai: form.target_nilai ? Number(form.target_nilai) : null,
-                sasaran_strategi_id: form.sasaran_strategi_id || null,
-            };
-            if (!hasUnitKerjaId) {
-                delete payload.unit_kerja_id;
+            // Resolve RKT and its parent rencana_strategis_id
+            let selectedRkt = rktList.find((r: any) => r.id === form.rkt_id);
+            let targetRenstraId = selectedRkt?.rencana_strategis_id || null;
+
+            // Resolve or insert Sasaran Strategi manually
+            let resolvedSasaranId = null;
+            if (form.sasaran_strategis && form.sasaran_strategis.trim()) {
+                const cleanSasaran = form.sasaran_strategis.trim();
+
+                // 1. Search for existing sasaran_strategi with same text and renstra_id
+                const { data: existingSas } = await supabase
+                    .from('sasaran_strategi')
+                    .select('id')
+                    .eq('sasaran', cleanSasaran)
+                    .eq('rencana_strategis_id', targetRenstraId)
+                    .limit(1);
+
+                if (existingSas && existingSas.length > 0) {
+                    resolvedSasaranId = existingSas[0].id;
+                } else if (targetRenstraId) {
+                    // 2. Insert new sasaran_strategi since it doesn't exist
+                    const { data: newSas, error: insertErr } = await supabase
+                        .from('sasaran_strategi')
+                        .insert({
+                            sasaran: cleanSasaran,
+                            rencana_strategis_id: targetRenstraId,
+                            kode: 'SAS-AUTO-' + Math.floor(Math.random() * 1000)
+                        })
+                        .select('id')
+                        .single();
+
+                    if (insertErr) {
+                        console.error('Error inserting sasaran_strategi:', insertErr);
+                    } else if (newSas) {
+                        resolvedSasaranId = newSas.id;
+                    }
+                }
             }
+
+            const createPayloads = (resolvedSasId: string | null, targetRenId: string | null) => {
+                const results: any[] = [];
+                for (const ind of form.indikators) {
+                    for (const tgt of ind.targets) {
+                        const p: any = {
+                            rencana_strategis_id: targetRenId,
+                            sasaran_strategi_id: resolvedSasId,
+                            indikator: ind.indikator,
+                            baseline_tahun: ind.baseline_tahun,
+                            baseline_nilai: ind.baseline_nilai ? Number(ind.baseline_nilai) : null,
+                            target_tahun: tgt.target_tahun,
+                            target_nilai: tgt.target_nilai ? Number(tgt.target_nilai) : null,
+                            satuan: ind.satuan,
+                            pic: ind.pic,
+                            initiatif_strategi: ind.initiatif_strategi
+                        };
+                        if (hasUnitKerjaId) p.unit_kerja_id = form.unit_kerja_id || null;
+                        results.push(p);
+                    }
+                }
+                return results;
+            };
+
+            const payloads = createPayloads(resolvedSasaranId, targetRenstraId);
+            const finalPayloads = await cleanPayload(payloads);
+
             let result;
             if (editId) {
-                result = await supabase.from('indikator_kinerja_utama').update(payload).eq('id', editId);
+                result = await supabase.from('indikator_kinerja_utama').update(finalPayloads[0]).eq('id', editId);
             } else {
-                result = await supabase.from('indikator_kinerja_utama').insert(payload);
+                result = await supabase.from('indikator_kinerja_utama').insert(finalPayloads);
             }
+
             if (result.error) {
                 console.error('Error saving IKT:', result.error);
                 alert('Gagal menyimpan data: ' + result.error.message);
@@ -305,136 +410,244 @@ export default function IKTPage() {
             {showModal && (
                 <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50 sticky top-0 z-10">
                             <h3 className="text-base font-bold text-slate-800">
                                 {editId ? 'Edit' : 'Tambah'} Indikator Kinerja
                             </h3>
-                            <button onClick={() => setShowModal(false)} className="p-1.5 hover:bg-slate-100 rounded-lg">
+                            <button onClick={() => setShowModal(false)} className="p-1.5 hover:bg-slate-200 rounded-lg">
                                 <X size={18} />
                             </button>
                         </div>
-                        <form onSubmit={handleSave} className="p-6 space-y-4">
-                            <div>
-                                <label className="form-label flex gap-1">Unit Kerja <span className="text-red-500">*</span></label>
-                                {profile?.role === 'user_unit' ? (
-                                    <div className="form-input bg-slate-100 text-slate-600 cursor-not-allowed">
-                                        {units.find(u => u.id === form.unit_kerja_id)?.nama_unit || 'Unit Kerja Anda'}
+                        <form onSubmit={handleSave} className="p-6 space-y-5">
+                            <div className="space-y-4 pb-4 border-b border-slate-100">
+                                <div>
+                                    <label className="form-label flex gap-1">Unit Kerja <span className="text-red-500">*</span></label>
+                                    {profile?.role === 'user_unit' ? (
+                                        <div className="form-input bg-slate-100 text-slate-600 cursor-not-allowed">
+                                            {units.find(u => u.id === form.unit_kerja_id)?.nama_unit || 'Unit Kerja Anda'}
+                                        </div>
+                                    ) : (
+                                        <select className="form-input" value={form.unit_kerja_id} onChange={e => setForm(f => ({ ...f, unit_kerja_id: e.target.value }))} required>
+                                            <option value="">-- Pilih Unit --</option>
+                                            {units.map(u => <option key={u.id} value={u.id}>{u.nama_unit}</option>)}
+                                        </select>
+                                    )}
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="form-label">Program/Kegiatan RKT</label>
+                                        <select
+                                            className="form-input"
+                                            value={form.rkt_id}
+                                            onChange={e => setForm(f => ({ ...f, rkt_id: e.target.value }))}
+                                            required
+                                            disabled={!form.unit_kerja_id}
+                                        >
+                                            <option value="">-- Pilih Program/Kegiatan --</option>
+                                            {rktList.map(r => <option key={r.id} value={r.id}>{r.program?.slice(0, 40) || '-'} / {r.kegiatan?.slice(0, 40) || '-'}</option>)}
+                                        </select>
+                                        {rktList.length === 0 && form.unit_kerja_id && <p className="text-xs text-amber-500 mt-1">Gagal memuat atau tidak ada RKT untuk unit ini.</p>}
                                     </div>
-                                ) : (
-                                    <select className="form-input" value={form.unit_kerja_id} onChange={e => setForm(f => ({ ...f, unit_kerja_id: e.target.value }))} required>
-                                        <option value="">-- Pilih Unit --</option>
-                                        {units.map(u => <option key={u.id} value={u.id}>{u.nama_unit}</option>)}
-                                    </select>
-                                )}
-                            </div>
-                            <div>
-                                <label className="form-label">Rencana Strategis</label>
-                                <select
-                                    className="form-input"
-                                    value={form.rencana_strategis_id}
-                                    onChange={e => setForm(f => ({ ...f, rencana_strategis_id: e.target.value }))}
-                                    required
-                                >
-                                    <option value="">-- Pilih Rencana Strategis --</option>
-                                    {renstraList.map(r => <option key={r.id} value={r.id}>{r.nama_rencana}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="form-label">Sasaran Strategi (Opsional)</label>
-                                <select
-                                    className="form-input"
-                                    value={form.sasaran_strategi_id}
-                                    onChange={e => setForm(f => ({ ...f, sasaran_strategi_id: e.target.value }))}
-                                >
-                                    <option value="">-- Pilih Sasaran (Opsional) --</option>
-                                    {sasaranList.map(s => <option key={s.id} value={s.id}>{s.sasaran}</option>)}
-                                </select>
-                            </div>
-                            <FormInputAI
-                                label="Indikator Kinerja"
-                                placeholder="Nama indikator kinerja..."
-                                value={form.indikator}
-                                onChange={v => setForm(f => ({ ...f, indikator: v }))}
-                            />
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="form-label">Tahun Baseline</label>
-                                    <input
-                                        type="number"
-                                        className="form-input"
-                                        value={form.baseline_tahun}
-                                        onChange={e => setForm(f => ({ ...f, baseline_tahun: Number(e.target.value) }))}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="form-label">Nilai Baseline</label>
-                                    <input
-                                        type="text"
-                                        className="form-input"
-                                        value={form.baseline_nilai}
-                                        onChange={e => setForm(f => ({ ...f, baseline_nilai: e.target.value }))}
-                                        placeholder="Contoh: 75"
-                                    />
+                                    <div>
+                                        <label className="form-label">Sasaran Strategi (Opsional)</label>
+                                        <input
+                                            type="text"
+                                            className="form-input"
+                                            value={form.sasaran_strategis}
+                                            onChange={e => setForm(f => ({ ...f, sasaran_strategis: e.target.value }))}
+                                            placeholder="Ketik manual sasaran..."
+                                        />
+                                    </div>
                                 </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="form-label">Tahun Target</label>
-                                    <input
-                                        type="number"
-                                        className="form-input"
-                                        value={form.target_tahun}
-                                        onChange={e => setForm(f => ({ ...f, target_tahun: Number(e.target.value) }))}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="form-label">Nilai Target</label>
-                                    <input
-                                        type="text"
-                                        className="form-input"
-                                        value={form.target_nilai}
-                                        onChange={e => setForm(f => ({ ...f, target_nilai: e.target.value }))}
-                                        placeholder="Contoh: 85"
-                                    />
-                                </div>
+
+                            {/* Indikator List */}
+                            <div className="space-y-6">
+                                {form.indikators.map((ind, indIdx) => (
+                                    <div key={ind.id} className="p-5 bg-slate-50 border border-slate-200 rounded-xl space-y-4 relative">
+                                        {!editId && form.indikators.length > 1 && (
+                                            <button type="button" onClick={() => setForm(f => ({ ...f, indikators: f.indikators.filter((_, i) => i !== indIdx) }))} className="absolute top-3 right-3 text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors group" title="Hapus Indikator">
+                                                <Trash2 size={16} />
+                                            </button>
+                                        )}
+
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold">{indIdx + 1}</div>
+                                            <h4 className="font-semibold text-slate-800 text-sm">Indikator Kinerja</h4>
+                                        </div>
+
+                                        <FormInputAI
+                                            label="Nama Indikator"
+                                            placeholder="Masukkan nama indikator kinerja..."
+                                            value={ind.indikator}
+                                            onChange={v => {
+                                                const newInds = [...form.indikators];
+                                                newInds[indIdx].indikator = v;
+                                                setForm(f => ({ ...f, indikators: newInds }));
+                                            }}
+                                        />
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="form-label">Tahun Baseline</label>
+                                                <input
+                                                    type="number"
+                                                    className="form-input"
+                                                    value={ind.baseline_tahun}
+                                                    onChange={e => {
+                                                        const newInds = [...form.indikators];
+                                                        newInds[indIdx].baseline_tahun = Number(e.target.value);
+                                                        setForm(f => ({ ...f, indikators: newInds }));
+                                                    }}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="form-label">Nilai Baseline</label>
+                                                <input
+                                                    type="text"
+                                                    className="form-input"
+                                                    value={ind.baseline_nilai}
+                                                    onChange={e => {
+                                                        const newInds = [...form.indikators];
+                                                        newInds[indIdx].baseline_nilai = e.target.value;
+                                                        setForm(f => ({ ...f, indikators: newInds }));
+                                                    }}
+                                                    placeholder="Contoh: 75"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Dynamic Targets */}
+                                        <div className="space-y-3 bg-white p-4 rounded-lg border border-slate-100 shadow-sm">
+                                            <div className="flex items-center justify-between">
+                                                <label className="form-label !mb-0 font-bold text-slate-700 flex items-center gap-2"><Target size={14} /> Target Capaian</label>
+                                                {!editId && ind.targets.length < 5 && (
+                                                    <button type="button" onClick={() => {
+                                                        const newInds = [...form.indikators];
+                                                        const nextYear = newInds[indIdx].targets.length > 0
+                                                            ? Number(newInds[indIdx].targets[newInds[indIdx].targets.length - 1].target_tahun) + 1
+                                                            : CURRENT_YEAR;
+                                                        newInds[indIdx].targets.push({ target_tahun: nextYear, target_nilai: '' });
+                                                        setForm(f => ({ ...f, indikators: newInds }));
+                                                    }} className="text-xs text-blue-600 font-medium hover:underline flex items-center gap-1 bg-blue-50 px-2 py-1 rounded-md transition-colors">
+                                                        <Plus size={12} /> Tambah Tahun Target
+                                                    </button>
+                                                )}
+                                            </div>
+
+                                            <div className="flex flex-col gap-2">
+                                                {ind.targets.map((tgt, tgtIdx) => (
+                                                    <div key={tgtIdx} className="flex items-center gap-3 w-full bg-slate-50 p-2 rounded-md border border-slate-100">
+                                                        <div className="w-24 shrink-0">
+                                                            <input
+                                                                type="number"
+                                                                className="form-input text-sm !py-1.5"
+                                                                value={tgt.target_tahun}
+                                                                onChange={e => {
+                                                                    const newInds = [...form.indikators];
+                                                                    newInds[indIdx].targets[tgtIdx].target_tahun = Number(e.target.value);
+                                                                    setForm(f => ({ ...f, indikators: newInds }));
+                                                                }}
+                                                                placeholder="Tahun"
+                                                            />
+                                                        </div>
+                                                        <div className="flex-1">
+                                                            <input
+                                                                type="text"
+                                                                className="form-input text-sm !py-1.5"
+                                                                value={tgt.target_nilai}
+                                                                onChange={e => {
+                                                                    const newInds = [...form.indikators];
+                                                                    newInds[indIdx].targets[tgtIdx].target_nilai = e.target.value;
+                                                                    setForm(f => ({ ...f, indikators: newInds }));
+                                                                }}
+                                                                placeholder="Nilai Target (Contoh: 100%)"
+                                                            />
+                                                        </div>
+                                                        {!editId && ind.targets.length > 1 && (
+                                                            <button type="button" onClick={() => {
+                                                                const newInds = [...form.indikators];
+                                                                newInds[indIdx].targets = newInds[indIdx].targets.filter((_, i) => i !== tgtIdx);
+                                                                setForm(f => ({ ...f, indikators: newInds }));
+                                                            }} className="shrink-0 text-slate-400 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-md transition-colors">
+                                                                <X size={14} />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            {editId && <p className="text-[10px] text-amber-600 mt-1 italic">* Dalam mode Edit, Anda hanya dapat mengubah satu target tahunan spesifik ini.</p>}
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="form-label">Satuan</label>
+                                                <input
+                                                    type="text"
+                                                    className="form-input"
+                                                    value={ind.satuan}
+                                                    onChange={e => {
+                                                        const newInds = [...form.indikators];
+                                                        newInds[indIdx].satuan = e.target.value;
+                                                        setForm(f => ({ ...f, indikators: newInds }));
+                                                    }}
+                                                    placeholder="Contoh: Persen, Orang"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="form-label">PIC (Penanggung Jawab)</label>
+                                                <input
+                                                    type="text"
+                                                    className="form-input"
+                                                    value={ind.pic}
+                                                    onChange={e => {
+                                                        const newInds = [...form.indikators];
+                                                        newInds[indIdx].pic = e.target.value;
+                                                        setForm(f => ({ ...f, indikators: newInds }));
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="form-label">Inisiatif Strategi</label>
+                                            <textarea
+                                                className="form-input"
+                                                rows={2}
+                                                value={ind.initiatif_strategi}
+                                                onChange={e => {
+                                                    const newInds = [...form.indikators];
+                                                    newInds[indIdx].initiatif_strategi = e.target.value;
+                                                    setForm(f => ({ ...f, indikators: newInds }));
+                                                }}
+                                                placeholder="Deskripsi inisiatif strategi..."
+                                            />
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="form-label">Satuan</label>
-                                    <input
-                                        type="text"
-                                        className="form-input"
-                                        value={form.satuan}
-                                        onChange={e => setForm(f => ({ ...f, satuan: e.target.value }))}
-                                        placeholder="Contoh: Persen, Orang, Hari"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="form-label">PIC</label>
-                                    <input
-                                        type="text"
-                                        className="form-input"
-                                        value={form.pic}
-                                        onChange={e => setForm(f => ({ ...f, pic: e.target.value }))}
-                                        placeholder="Penanggung jawab"
-                                    />
-                                </div>
-                            </div>
-                            <div>
-                                <label className="form-label">Inisiatif Strategi</label>
-                                <textarea
-                                    className="form-input"
-                                    rows={3}
-                                    value={form.initiatif_strategi}
-                                    onChange={e => setForm(f => ({ ...f, initiatif_strategi: e.target.value }))}
-                                    placeholder="Deskripsi inisiatif strategi..."
-                                />
-                            </div>
-                            <div className="flex justify-end space-x-2 pt-2">
-                                <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>
+
+                            {!editId && (
+                                <button type="button" onClick={() => {
+                                    const newInds = [...form.indikators, {
+                                        id: Date.now().toString(),
+                                        indikator: '',
+                                        baseline_tahun: CURRENT_YEAR - 1,
+                                        baseline_nilai: '',
+                                        satuan: '',
+                                        pic: '',
+                                        initiatif_strategi: '',
+                                        targets: [{ target_tahun: CURRENT_YEAR, target_nilai: '' }]
+                                    }];
+                                    setForm(f => ({ ...f, indikators: newInds }));
+                                }} className="w-full py-3 border-2 border-dashed border-blue-200 text-blue-600 rounded-xl hover:bg-blue-50 transition-colors font-medium text-sm flex items-center justify-center gap-2">
+                                    <Plus size={16} /> Tambah Indikator Kinerja Baru
+                                </button>
+                            )}
+
+                            <div className="flex justify-end space-x-3 pt-4 border-t border-slate-100">
+                                <button type="button" className="btn-secondary px-6" onClick={() => setShowModal(false)}>
                                     Batal
                                 </button>
-                                <button type="submit" className="btn-primary" disabled={saving}>
+                                <button type="submit" className="btn-primary px-6" disabled={saving}>
                                     {saving ? (
                                         <>
                                             <Loader2 size={15} className="animate-spin" />
@@ -443,7 +656,7 @@ export default function IKTPage() {
                                     ) : (
                                         <>
                                             <Save size={15} />
-                                            <span>Simpan</span>
+                                            <span>Simpan Indikator</span>
                                         </>
                                     )}
                                 </button>
