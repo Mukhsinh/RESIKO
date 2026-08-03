@@ -246,29 +246,22 @@ export default function DashboardPage() {
             </div>
 
             {/* Premium Clean White Summary Banner */}
-            <div className="relative overflow-hidden rounded-3xl bg-white p-8 border border-slate-200/80 shadow-xs flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6">
+            <div className="relative overflow-hidden rounded-3xl bg-white p-6 border border-slate-200/80 shadow-xs">
                 <div className="absolute top-0 right-0 w-80 h-80 bg-slate-50 rounded-full blur-3xl -translate-y-20 translate-x-20 pointer-events-none"></div>
-                <div className="space-y-2 z-10">
-                    <span className="bg-[#137fec]/10 text-[#137fec] text-[10px] font-bold tracking-widest px-3 py-1 rounded-full uppercase">Executive Summary</span>
-                    <h2 className="text-2xl font-black tracking-tight text-slate-800">{settings?.nama_rs || 'ManRisk Portal'}</h2>
-                    <p className="text-slate-500 text-xs font-semibold max-w-lg leading-relaxed">
-                        Tingkat keberhasilan pemenuhan sasaran organisasi berada di angka {kpiPct}% dengan {stats.strategiTercapai} dari {stats.totalStrategi} KPI utama tercapai. Pengelolaan risiko mencatatkan rasio penyelesaian mitigasi sebesar {closedPct}%.
-                    </p>
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 z-10 w-full xl:w-auto">
-                    <div className="bg-blue-600 rounded-2xl p-4 text-center shrink-0 min-w-[125px] shadow-sm hover:shadow-md transition-shadow">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 z-10 relative w-full">
+                    <div className="bg-blue-600 rounded-2xl p-4 text-center shadow-sm hover:shadow-md transition-shadow">
                         <p className="text-2xl font-black text-white">{kpiPct}%</p>
                         <p className="text-[10px] text-blue-100 font-bold uppercase mt-1 font-sans">Capaian KPI</p>
                     </div>
-                    <div className="bg-emerald-600 rounded-2xl p-4 text-center shrink-0 min-w-[125px] shadow-sm hover:shadow-md transition-shadow">
+                    <div className="bg-emerald-600 rounded-2xl p-4 text-center shadow-sm hover:shadow-md transition-shadow">
                         <p className="text-2xl font-black text-white">{closedPct}%</p>
                         <p className="text-[10px] text-emerald-100 font-bold uppercase mt-1 font-sans">Mitigasi Selesai</p>
                     </div>
-                    <div className="bg-rose-600 rounded-2xl p-4 text-center shrink-0 min-w-[125px] shadow-sm hover:shadow-md transition-shadow">
+                    <div className="bg-rose-600 rounded-2xl p-4 text-center shadow-sm hover:shadow-md transition-shadow">
                         <p className="text-2xl font-black text-white">{stats.risikoTinggi}</p>
                         <p className="text-[10px] text-rose-100 font-bold uppercase mt-1 font-sans">Risiko Sangat Tinggi</p>
                     </div>
-                    <div className="bg-amber-500 rounded-2xl p-4 text-center shrink-0 min-w-[125px] shadow-sm hover:shadow-md transition-shadow">
+                    <div className="bg-amber-500 rounded-2xl p-4 text-center shadow-sm hover:shadow-md transition-shadow">
                         <p className="text-2xl font-black text-white">{stats.avgRiskScore}</p>
                         <p className="text-[10px] text-amber-50 font-bold uppercase mt-1 font-sans">Rerata Skor Risiko</p>
                     </div>

@@ -141,7 +141,21 @@ export default function IdentifikasiRisikoPage() {
         });
         supabase.from('master_risk_categories').select('id, name').then(({ data: c, error }: { data: any; error: any }) => {
             if (error) console.error('Error fetching categories:', error);
-            setCategories(c ?? []);
+            const categoryOrder = [
+                'Risiko Kebijakan',
+                'Risiko Reputasi',
+                'Risiko Fraud',
+                'Risiko Legal',
+                'Risiko Kepatuhan',
+                'Risiko Operasional'
+            ];
+            const fetched = c ?? [];
+            const sorted = [...fetched].sort((a: any, b: any) => {
+                const idxA = categoryOrder.indexOf(a.name);
+                const idxB = categoryOrder.indexOf(b.name);
+                return (idxA === -1 ? 99 : idxA) - (idxB === -1 ? 99 : idxB);
+            });
+            setCategories(sorted);
         });
     }, [fetchData]);
 

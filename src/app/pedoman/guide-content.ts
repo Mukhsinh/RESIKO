@@ -51,7 +51,7 @@ export const GUIDES_CONTENT = [
         sections: [
             {
                 title: 'I. Kamus Risiko',
-                content: `Dalam mengisi form identifikasi, gunakan terminologi yang baku:\n- **Kategori Risiko**: Strategis, Operasional, Finansial, Kepatuhan, Reputasi.\n- **Penyebab**: Akar masalah (Root Cause).\n- **Dampak**: Kerugian yang timbul (Cedera, Finansial, Hukum).`
+                content: `Dalam mengisi form identifikasi, gunakan terminologi yang baku:\n- **Kategori Risiko**: Risiko Kebijakan, Risiko Reputasi, Risiko Fraud, Risiko Legal, Risiko Kepatuhan, Risiko Operasional.\n- **Penyebab**: Akar masalah (Root Cause).\n- **Dampak**: Kerugian yang timbul (Cedera, Finansial, Hukum).`
             },
             {
                 title: 'II. Matriks Penilaian Risiko (5x5)',

@@ -103,24 +103,36 @@ export default function Sidebar() {
     const pathname = usePathname();
     const { settings } = useAppSettings();
     const { profile } = useUserProfile();
-    const [openMenus, setOpenMenus] = useState<Record<string, boolean>>(() => {
-        if (typeof window !== 'undefined') {
-            const saved = localStorage.getItem('sidebar_open_menus');
-            if (saved) {
-                try {
-                    return JSON.parse(saved);
-                } catch (e) {
-                    console.error('Failed to parse saved sidebar state', e);
-                }
+    const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({});
+    const [mobileOpen, setMobileOpen] = useState(false);
+
+    // Restore saved sidebar open state after initial hydration mount
+    React.useEffect(() => {
+        let initial: Record<string, boolean> = {};
+        const saved = localStorage.getItem('sidebar_open_menus');
+        if (saved) {
+            try {
+                initial = JSON.parse(saved) || {};
+            } catch (e) {
+                console.error('Failed to parse saved sidebar state', e);
             }
         }
-        return {};
-    });
-    const [mobileOpen, setMobileOpen] = useState(false);
+        // Auto expand menu of currently active sub-route
+        if (pathname) {
+            navItems.forEach(item => {
+                if (item.children && item.children.some(c => c.href === pathname || (c.children && c.children.some(sc => sc.href === pathname)))) {
+                    initial[item.label] = true;
+                }
+            });
+        }
+        setOpenMenus(initial);
+    }, []);
 
     // Persist openMenus to localStorage
     React.useEffect(() => {
-        localStorage.setItem('sidebar_open_menus', JSON.stringify(openMenus));
+        if (Object.keys(openMenus).length > 0) {
+            localStorage.setItem('sidebar_open_menus', JSON.stringify(openMenus));
+        }
     }, [openMenus]);
 
     // Instant scroll restoration ref callback to prevent visual layout jump/bounce

@@ -56,7 +56,7 @@ const EMPTY_FORM = {
     dokumen_pendukung: '',
 };
 
-const KATEGORI_LIST = ['Operasional', 'Klinis', 'Finansial', 'Reputasi', 'Kepatuhan', 'SDM', 'Teknologi'];
+const KATEGORI_LIST = ['Risiko Kebijakan', 'Risiko Reputasi', 'Risiko Fraud', 'Risiko Legal', 'Risiko Kepatuhan', 'Risiko Operasional'];
 const STATUS_LIST = ['Investigasi', 'Penanganan', 'Penelusuran', 'Terselesaikan', 'Closed'];
 
 /* ─── Modal ─── */
