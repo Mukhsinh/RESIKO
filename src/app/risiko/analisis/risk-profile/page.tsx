@@ -39,7 +39,11 @@ interface RiskInputOption {
     id: string;
     kode_risiko?: string;
     nama_risiko?: string;
+    identifikasi_deskripsi?: string;
+    identifikasi_akar_penyebab?: string;
+    penyebab_risiko?: string;
     nama_unit_kerja_id?: string;
+    master_work_units?: { id: string; name: string };
 }
 
 interface WorkUnit {
@@ -78,12 +82,13 @@ const EMPTY_FORM = {
     status: 'Open',
 };
 
-function RiskModal({ row, onClose, onSave, units, riskInputs }: {
+function RiskModal({ row, onClose, onSave, units, riskInputs, saving }: {
     row: Partial<typeof EMPTY_FORM> | null;
     onClose: () => void;
     onSave: (data: typeof EMPTY_FORM) => void;
     units: WorkUnit[];
     riskInputs: RiskInputOption[];
+    saving: boolean;
 }) {
     const [form, setForm] = useState({ ...EMPTY_FORM, ...(row ?? {}) });
     const f = (k: keyof typeof form, v: string | number) => setForm(prev => ({ ...prev, [k]: v }));
@@ -91,17 +96,38 @@ function RiskModal({ row, onClose, onSave, units, riskInputs }: {
     const skor = form.probabilitas * form.dampak;
     const skor_res = form.p_residual * form.d_residual;
 
-    // Filter risk inputs berdasarkan unit kerja
+    // Direct unit name matching between unit_kerja and master_work_units
+    const selectedUnit = units.find(u => u.id === form.unit_kerja_id);
+    const selectedUnitName = selectedUnit?.name;
+
     const filteredRisks = form.unit_kerja_id
-        ? riskInputs.filter(r => !r.nama_unit_kerja_id || r.nama_unit_kerja_id === form.unit_kerja_id)
+        ? riskInputs.filter(r => {
+            if (!r.nama_unit_kerja_id) return true;
+            const rUnitName = r.master_work_units?.name;
+            if (rUnitName && selectedUnitName) {
+                return rUnitName.trim().toLowerCase() === selectedUnitName.trim().toLowerCase();
+            }
+            return r.nama_unit_kerja_id === form.unit_kerja_id;
+        })
         : riskInputs;
 
     const handleRiskSelect = (riskId: string) => {
         f('risk_input_id', riskId);
         const risk = riskInputs.find(r => r.id === riskId);
         if (risk) {
+            const title = risk.nama_risiko || risk.identifikasi_deskripsi || '';
             f('kode_risiko', risk.kode_risiko || '');
-            f('identifikasi_risiko', risk.nama_risiko || '');
+            f('identifikasi_risiko', title);
+            const akar = risk.identifikasi_akar_penyebab || risk.penyebab_risiko || '';
+            if (akar) {
+                f('akar_penyebab', akar);
+            }
+            if (!form.unit_kerja_id && risk.master_work_units?.name) {
+                const matchingUnit = units.find(u => u.name.trim().toLowerCase() === risk.master_work_units?.name?.trim().toLowerCase());
+                if (matchingUnit) {
+                    f('unit_kerja_id', matchingUnit.id);
+                }
+            }
         }
     };
 
@@ -139,10 +165,20 @@ function RiskModal({ row, onClose, onSave, units, riskInputs }: {
                         <label className="block text-xs font-semibold text-slate-600 mb-1.5">Pilih Risiko (dari Identifikasi Risiko)</label>
                         <select className="form-input w-full" value={form.risk_input_id} onChange={e => handleRiskSelect(e.target.value)}>
                             <option value="">-- Pilih Risiko --</option>
-                            {filteredRisks.map(r => (
-                                <option key={r.id} value={r.id}>{r.kode_risiko ? `[${r.kode_risiko}] ` : ''}{r.nama_risiko || 'Tanpa Nama'}</option>
-                            ))}
+                            {filteredRisks.map(r => {
+                                const title = r.nama_risiko || r.identifikasi_deskripsi || 'Tanpa Nama';
+                                const codeText = r.kode_risiko ? `[${r.kode_risiko}] ` : '';
+                                const unitTag = !form.unit_kerja_id && r.master_work_units?.name ? ` (${r.master_work_units.name})` : '';
+                                return (
+                                    <option key={r.id} value={r.id}>
+                                        {codeText}{title}{unitTag}
+                                    </option>
+                                );
+                            })}
                         </select>
+                        {form.unit_kerja_id && filteredRisks.length === 0 && (
+                            <p className="text-xs text-amber-600 mt-1">Belum ada data identifikasi risiko untuk unit kerja ini di menu Identifikasi Risiko.</p>
+                        )}
                     </div>
 
                     {/* Kode & Pernyataan Risiko */}
@@ -249,7 +285,9 @@ function RiskModal({ row, onClose, onSave, units, riskInputs }: {
 
                 <div className="flex justify-end gap-3 px-6 pb-6">
                     <button onClick={onClose} className="btn-secondary">Batal</button>
-                    <button onClick={() => onSave(form)} className="btn-primary flex items-center gap-2"><Save size={15} /> Simpan Data</button>
+                    <button onClick={() => onSave(form)} disabled={saving} className="btn-primary flex items-center gap-2">
+                        {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} Simpan Data
+                    </button>
                 </div>
             </div>
         </div>
@@ -354,8 +392,17 @@ export default function RiskProfilePage() {
     }, [fetchData]);
 
     useEffect(() => {
-        supabase.from('unit_kerja').select('id, nama_unit').then(({ data }: { data: any }) => setUnits((data ?? []).map((u: any) => ({ id: u.id, name: u.nama_unit }))));
-        supabase.from('risk_inputs').select('id, kode_risiko, nama_risiko, nama_unit_kerja_id').then(({ data }: { data: any }) => setRiskInputs((data ?? []) as RiskInputOption[]));
+        supabase
+            .from('unit_kerja')
+            .select('id, nama_unit')
+            .order('nama_unit', { ascending: true })
+            .then(({ data }: { data: any }) => setUnits((data ?? []).map((u: any) => ({ id: u.id, name: u.nama_unit }))));
+
+        supabase
+            .from('risk_inputs')
+            .select('id, kode_risiko, nama_risiko, identifikasi_deskripsi, identifikasi_akar_penyebab, penyebab_risiko, nama_unit_kerja_id, master_work_units(id, name)')
+            .order('created_at', { ascending: false })
+            .then(({ data }: { data: any }) => setRiskInputs((data ?? []) as RiskInputOption[]));
     }, []);
 
     const filtered = rows.filter(d => {
@@ -386,23 +433,26 @@ export default function RiskProfilePage() {
     ]);
 
     const handleSave = async (form: typeof EMPTY_FORM) => {
+        if (!form.identifikasi_risiko || !form.identifikasi_risiko.trim()) {
+            alert('Pernyataan / Identifikasi Risiko wajib diisi!');
+            return;
+        }
         setSaving(true);
         try {
             const payload = {
                 unit_kerja_id: form.unit_kerja_id || null,
                 tahun: Number(form.tahun),
                 kode_risiko: form.kode_risiko || null,
-                identifikasi_risiko: form.identifikasi_risiko,
+                identifikasi_risiko: form.identifikasi_risiko.trim(),
                 akar_penyebab: form.akar_penyebab || null,
-                probabilitas: form.probabilitas,
-                dampak: form.dampak,
-                skor_risiko: form.probabilitas * form.dampak,
+                probabilitas: Number(form.probabilitas),
+                dampak: Number(form.dampak),
                 mitigasi: form.mitigasi || null,
                 rencana_penanganan: form.rencana_penanganan || null,
-                anggaran: form.anggaran || null,
-                selera_risiko: form.selera_risiko,
-                p_residual: form.p_residual,
-                d_residual: form.d_residual,
+                anggaran: form.anggaran ? Number(form.anggaran) : null,
+                selera_risiko: Number(form.selera_risiko),
+                p_residual: Number(form.p_residual),
+                d_residual: Number(form.d_residual),
                 status: form.status,
             };
 
@@ -421,8 +471,12 @@ export default function RiskProfilePage() {
                 setEditRow(null);
                 fetchData();
             }
-        } catch (e) { console.error(e); }
-        finally { setSaving(false); }
+        } catch (e: any) {
+            console.error(e);
+            alert('Terjadi kesalahan saat menyimpan data');
+        } finally {
+            setSaving(false);
+        }
     };
 
     const handleDelete = async (row: RiskRow) => {
@@ -463,6 +517,7 @@ export default function RiskProfilePage() {
                     onSave={handleSave}
                     units={units}
                     riskInputs={riskInputs}
+                    saving={saving}
                 />
             )}
             {viewRow && <ViewModal row={viewRow} onClose={() => setViewRow(null)} />}

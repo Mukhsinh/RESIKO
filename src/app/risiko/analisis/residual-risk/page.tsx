@@ -6,8 +6,8 @@ import { PageHeader, ScoreCard, FilterBar, TopActionBar } from '@/components/Sha
 import DataTable, { type Column } from '@/components/DataTable';
 import RiskHeatmap, { type HeatmapPoint } from '@/components/RiskHeatmap';
 import {
-    FileText, AlertTriangle, ShieldAlert,
-    CheckCircle2, Eye, X, Save, Loader2, TrendingDown
+    Plus, FileText, AlertTriangle, ShieldAlert,
+    CheckCircle2, Eye, Edit, Trash2, X, Save, Loader2, TrendingDown
 } from 'lucide-react';
 
 /* ─── Types ─────────────────────────────────────────────────────── */
@@ -30,10 +30,20 @@ interface RiskRow {
     status: string;
     created_at: string;
     unit_kerja?: { id: string; nama_unit: string };
+    master_work_units?: { id: string; name: string };
 }
 
 interface WorkUnit { id: string; name: string; }
-interface RiskInputOption { id: string; kode_risiko?: string; nama_risiko?: string; nama_unit_kerja_id?: string; }
+interface RiskInputOption {
+    id: string;
+    kode_risiko?: string;
+    nama_risiko?: string;
+    identifikasi_deskripsi?: string;
+    identifikasi_akar_penyebab?: string;
+    penyebab_risiko?: string;
+    nama_unit_kerja_id?: string;
+    master_work_units?: { id: string; name: string };
+}
 
 /* ─── Helpers ────────────────────────────────────────────────────── */
 function StatusBadge({ status }: { status: string }) {
@@ -83,16 +93,37 @@ function ResidualModal({ row, onClose, onSave, units, riskInputs, saving }: {
     const skor_res = form.p_residual * form.d_residual;
     const persen_turun = Math.max(0, Math.round((1 - skor_res / Math.max(skor, 1)) * 100));
 
+    const selectedUnit = units.find(u => u.id === form.unit_kerja_id);
+    const selectedUnitName = selectedUnit?.name;
+
     const filteredRisks = form.unit_kerja_id
-        ? riskInputs.filter(r => !r.nama_unit_kerja_id || r.nama_unit_kerja_id === form.unit_kerja_id)
+        ? riskInputs.filter(r => {
+            if (!r.nama_unit_kerja_id) return true;
+            const rUnitName = r.master_work_units?.name;
+            if (rUnitName && selectedUnitName) {
+                return rUnitName.trim().toLowerCase() === selectedUnitName.trim().toLowerCase();
+            }
+            return r.nama_unit_kerja_id === form.unit_kerja_id;
+        })
         : riskInputs;
 
     const handleRiskSelect = (riskId: string) => {
         f('risk_input_id', riskId);
         const risk = riskInputs.find(r => r.id === riskId);
         if (risk) {
+            const title = risk.nama_risiko || risk.identifikasi_deskripsi || '';
             f('kode_risiko', risk.kode_risiko || '');
-            f('identifikasi_risiko', risk.nama_risiko || '');
+            f('identifikasi_risiko', title);
+            const akar = risk.identifikasi_akar_penyebab || risk.penyebab_risiko || '';
+            if (akar) {
+                f('akar_penyebab', akar);
+            }
+            if (!form.unit_kerja_id && risk.master_work_units?.name) {
+                const matchingUnit = units.find(u => u.name.trim().toLowerCase() === risk.master_work_units?.name?.trim().toLowerCase());
+                if (matchingUnit) {
+                    f('unit_kerja_id', matchingUnit.id);
+                }
+            }
         }
     };
 
@@ -137,12 +168,20 @@ function ResidualModal({ row, onClose, onSave, units, riskInputs, saving }: {
                         <label className="form-label">Pilih Risiko (dari Identifikasi Risiko)</label>
                         <select className="form-input w-full" value={form.risk_input_id} onChange={e => handleRiskSelect(e.target.value)}>
                             <option value="">-- Pilih Risiko --</option>
-                            {filteredRisks.map(r => (
-                                <option key={r.id} value={r.id}>
-                                    {r.kode_risiko ? `[${r.kode_risiko}] ` : ''}{r.nama_risiko || 'Tanpa Nama'}
-                                </option>
-                            ))}
+                            {filteredRisks.map(r => {
+                                const title = r.nama_risiko || r.identifikasi_deskripsi || 'Tanpa Nama';
+                                const codeText = r.kode_risiko ? `[${r.kode_risiko}] ` : '';
+                                const unitTag = !form.unit_kerja_id && r.master_work_units?.name ? ` (${r.master_work_units.name})` : '';
+                                return (
+                                    <option key={r.id} value={r.id}>
+                                        {codeText}{title}{unitTag}
+                                    </option>
+                                );
+                            })}
                         </select>
+                        {form.unit_kerja_id && filteredRisks.length === 0 && (
+                            <p className="text-xs text-amber-600 mt-1">Belum ada data identifikasi risiko untuk unit kerja ini.</p>
+                        )}
                     </div>
 
                     {/* Kode & Pernyataan */}
@@ -317,9 +356,15 @@ function ViewModal({ row, onClose }: { row: RiskRow; onClose: () => void }) {
 export default function ResidualRiskPage() {
     const [search, setSearch] = useState('');
     const [year, setYear] = useState(String(new Date().getFullYear()));
+    const [unitFilter, setUnitFilter] = useState('');
     const [rows, setRows] = useState<RiskRow[]>([]);
     const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [units, setUnits] = useState<WorkUnit[]>([]);
+    const [riskInputs, setRiskInputs] = useState<RiskInputOption[]>([]);
+    const [showModal, setShowModal] = useState(false);
     const [viewRow, setViewRow] = useState<RiskRow | null>(null);
+    const [editRow, setEditRow] = useState<Partial<typeof EMPTY_FORM> & { _id?: string } | null>(null);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -338,10 +383,26 @@ export default function ResidualRiskPage() {
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
-    const filtered = rows.filter(d =>
-        (d.identifikasi_risiko || '').toLowerCase().includes(search.toLowerCase()) ||
-        (d.kode_risiko || '').toLowerCase().includes(search.toLowerCase())
-    );
+    useEffect(() => {
+        supabase
+            .from('unit_kerja')
+            .select('id, nama_unit')
+            .order('nama_unit', { ascending: true })
+            .then(({ data }: { data: any }) => setUnits((data ?? []).map((u: any) => ({ id: u.id, name: u.nama_unit }))));
+
+        supabase
+            .from('risk_inputs')
+            .select('id, kode_risiko, nama_risiko, identifikasi_deskripsi, identifikasi_akar_penyebab, penyebab_risiko, nama_unit_kerja_id, master_work_units(id, name)')
+            .order('created_at', { ascending: false })
+            .then(({ data }: { data: any }) => setRiskInputs((data ?? []) as RiskInputOption[]));
+    }, []);
+
+    const filtered = rows.filter(d => {
+        const matchSearch = (d.identifikasi_risiko || '').toLowerCase().includes(search.toLowerCase()) ||
+            (d.kode_risiko || '').toLowerCase().includes(search.toLowerCase());
+        const matchUnit = unitFilter ? d.unit_kerja_id === unitFilter : true;
+        return matchSearch && matchUnit;
+    });
 
     // Stats computed from real data
     const stats = {
@@ -363,6 +424,59 @@ export default function ResidualRiskPage() {
             { id: r.id + '_res', x: d_res, y: p_res, label: r.identifikasi_risiko, type: 'residual' as const },
         ];
     });
+
+    const handleSave = async (form: typeof EMPTY_FORM) => {
+        if (!form.identifikasi_risiko || !form.identifikasi_risiko.trim()) {
+            alert('Pernyataan / Identifikasi Risiko wajib diisi!');
+            return;
+        }
+        setSaving(true);
+        try {
+            const payload = {
+                unit_kerja_id: form.unit_kerja_id || null,
+                tahun: Number(form.tahun),
+                kode_risiko: form.kode_risiko || null,
+                identifikasi_risiko: form.identifikasi_risiko.trim(),
+                akar_penyebab: form.akar_penyebab || null,
+                probabilitas: Number(form.probabilitas),
+                dampak: Number(form.dampak),
+                mitigasi: form.mitigasi || null,
+                rencana_penanganan: form.rencana_penanganan || null,
+                anggaran: form.anggaran ? Number(form.anggaran) : null,
+                selera_risiko: Number(form.selera_risiko),
+                p_residual: Number(form.p_residual),
+                d_residual: Number(form.d_residual),
+                status: form.status,
+            };
+
+            let error;
+            if (editRow?._id) {
+                ({ error } = await supabase.from('manajemen_risiko').update(payload).eq('id', editRow._id));
+            } else {
+                ({ error } = await supabase.from('manajemen_risiko').insert(payload));
+            }
+
+            if (error) {
+                console.error('Error saving:', error);
+                alert('Gagal menyimpan: ' + error.message);
+            } else {
+                setShowModal(false);
+                setEditRow(null);
+                fetchData();
+            }
+        } catch (e: any) {
+            console.error(e);
+            alert('Terjadi kesalahan saat menyimpan data');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleDelete = async (row: RiskRow) => {
+        if (!confirm(`Hapus data residual risiko "${row.identifikasi_risiko}"?`)) return;
+        await supabase.from('manajemen_risiko').delete().eq('id', row.id);
+        fetchData();
+    };
 
     const handleUnduhLaporan = async () => {
         const { data: settings } = await supabase.from('app_settings').select('*').limit(1).single();
@@ -440,8 +554,6 @@ export default function ResidualRiskPage() {
         a.click(); URL.revokeObjectURL(url);
     };
 
-
-
     const columns: Column<RiskRow>[] = [
         { key: 'tahun', label: 'Tahun', className: 'w-20 text-center' },
         { key: 'unit_kerja_id', label: 'Unit Kerja', render: r => (r as any).unit_kerja?.nama_unit ?? '-' },
@@ -478,6 +590,11 @@ export default function ResidualRiskPage() {
             key: 'actions', label: 'Aksi', render: r => (
                 <div className="flex gap-1 justify-center">
                     <button className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded" title="Lihat detail" onClick={() => setViewRow(r)}><Eye size={15} /></button>
+                    <button className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded" title="Edit" onClick={() => {
+                        setEditRow({ ...EMPTY_FORM, ...r, tahun: String(r.tahun), _id: r.id });
+                        setShowModal(true);
+                    }}><Edit size={15} /></button>
+                    <button className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded" title="Hapus" onClick={() => handleDelete(r)}><Trash2 size={15} /></button>
                 </div>
             )
         },
@@ -485,6 +602,16 @@ export default function ResidualRiskPage() {
 
     return (
         <div>
+            {showModal && (
+                <ResidualModal
+                    row={editRow}
+                    onClose={() => { setShowModal(false); setEditRow(null); }}
+                    onSave={handleSave}
+                    units={units}
+                    riskInputs={riskInputs}
+                    saving={saving}
+                />
+            )}
             {viewRow && <ViewModal row={viewRow} onClose={() => setViewRow(null)} />}
 
             <PageHeader title="Residual Risk" subtitle="Analisis Risiko Inherent vs Residual setelah mitigasi." />
@@ -518,15 +645,25 @@ export default function ResidualRiskPage() {
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-8">
                 <TopActionBar
                     filters={
-                        <FilterBar
-                            searchValue={search} onSearchChange={setSearch} searchPlaceholder="Cari risiko..."
-                            yearValue={year} onYearChange={setYear}
-                        />
+                        <div className="flex flex-wrap gap-3 items-center">
+                            <FilterBar
+                                searchValue={search} onSearchChange={setSearch} searchPlaceholder="Cari risiko..."
+                                yearValue={year} onYearChange={setYear}
+                            />
+                            <select className="form-input text-sm h-9" value={unitFilter} onChange={e => setUnitFilter(e.target.value)}>
+                                <option value="">Semua Unit</option>
+                                {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                            </select>
+                        </div>
                     }
                     actions={
                         <>
                             <button className="btn-secondary flex items-center gap-2" onClick={handleUnduhLaporan}>
                                 <FileText size={15} /><span>Unduh Laporan</span>
+                            </button>
+                            <button className="btn-primary flex items-center gap-2" onClick={() => { setEditRow(null); setShowModal(true); }}>
+                                {saving ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
+                                <span>Tambah Data</span>
                             </button>
                         </>
                     }
