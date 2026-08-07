@@ -8,7 +8,7 @@ import FormInputAI from '@/components/FormInputAI';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import {
     Plus, Download, Upload, FileText,
-    AlertTriangle, ShieldAlert, CheckCircle2, X, Save, Loader2
+    AlertTriangle, ShieldAlert, CheckCircle2, X, Save, Loader2, Sparkles
 } from 'lucide-react';
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -87,6 +87,51 @@ export default function IdentifikasiRisikoPage() {
     const [form, setForm] = useState<FormData>(defaultForm);
     const [saving, setSaving] = useState(false);
     const [sasaranOptions, setSasaranOptions] = useState<string[]>([]);
+    const [aiBatchLoading, setAiBatchLoading] = useState(false);
+    const [aiBatchError, setAiBatchError] = useState<string | null>(null);
+
+    const handleSimultaneousAI = async () => {
+        setAiBatchLoading(true);
+        setAiBatchError(null);
+        try {
+            const unitName = units.find(u => u.id === form.nama_unit_kerja_id)?.nama_unit || '';
+            const categoryName = categories.find(c => c.id === form.kategori_risiko_id)?.name || '';
+
+            const response = await fetch('/api/ai/completion', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mode: 'simultaneous_risk',
+                    contextData: {
+                        nama_risiko: form.nama_risiko,
+                        unit_kerja: unitName,
+                        kategori_risiko: categoryName,
+                        sasaran: form.sasaran,
+                        jenis_risiko: form.jenis_risiko
+                    }
+                })
+            });
+
+            const resJson = await response.json();
+            if (!response.ok || !resJson.success || !resJson.batchResult) {
+                throw new Error(resJson.error || 'Gagal memproses bantuan AI simultan.');
+            }
+
+            const b = resJson.batchResult;
+            setForm(f => ({
+                ...f,
+                identifikasi_deskripsi: b.identifikasi_deskripsi || f.identifikasi_deskripsi,
+                identifikasi_akar_penyebab: b.identifikasi_akar_penyebab || f.identifikasi_akar_penyebab,
+                penyebab_risiko: b.penyebab_risiko || f.penyebab_risiko,
+                dampak_risiko: b.dampak_risiko || f.dampak_risiko
+            }));
+        } catch (err: any) {
+            console.error('Error generating simultaneous AI risk draft:', err);
+            setAiBatchError(err.message || 'Terjadi kesalahan sistem.');
+        } finally {
+            setAiBatchLoading(false);
+        }
+    };
 
     // Auto-lock unit filter for unit managers
     useEffect(() => {
@@ -432,6 +477,30 @@ export default function IdentifikasiRisikoPage() {
                                     <p className="text-xs text-amber-600 mt-1">Belum ada sasaran strategi di TOWS untuk unit & tahun ini</p>
                                 )}
                             </div>
+
+                            {/* Bantuan AI Simultan Card */}
+                            <div className="bg-gradient-to-r from-violet-50 to-indigo-50 border border-indigo-100/80 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+                                <div>
+                                    <h4 className="text-xs font-bold text-indigo-950 flex items-center gap-1.5">
+                                        <Sparkles className="text-indigo-600" size={15} />
+                                        Analisis AI Simultan (Draft Risiko Lengkap)
+                                    </h4>
+                                    <p className="text-[11px] text-indigo-700/80 mt-0.5 leading-normal">
+                                        Otomatis merumuskan Deskripsi, Akar Penyebab, Penyebab, & Dampak Risiko berdasarkan data di atas.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handleSimultaneousAI}
+                                    disabled={aiBatchLoading}
+                                    className="px-3.5 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm shrink-0 cursor-pointer disabled:opacity-60 transition-all"
+                                >
+                                    {aiBatchLoading ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                                    <span>{aiBatchLoading ? 'Menganalisis ISO 31000...' : 'Jalankan AI Simultan'}</span>
+                                </button>
+                            </div>
+                            {aiBatchError && <p className="text-xs text-rose-500 font-medium">Error AI: {aiBatchError}</p>}
+
                             <FormInputAI label="Deskripsi Risiko" placeholder="Deskripsi risiko secara detail..." value={form.identifikasi_deskripsi} onChange={v => setForm(f => ({ ...f, identifikasi_deskripsi: v }))} />
                             <FormInputAI label="Akar Penyebab" placeholder="Akar penyebab risiko..." value={form.identifikasi_akar_penyebab} onChange={v => setForm(f => ({ ...f, identifikasi_akar_penyebab: v }))} />
                             <FormInputAI label="Penyebab Risiko" placeholder="Penyebab risiko..." value={form.penyebab_risiko} onChange={v => setForm(f => ({ ...f, penyebab_risiko: v }))} />

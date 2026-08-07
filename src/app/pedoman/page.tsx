@@ -33,91 +33,211 @@ export default function PedomanPage() {
         const doc = new jsPDF('p', 'pt', 'a4');
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
-        const margin = 40;
+        const margin = 45;
+        const contentWidth = pageWidth - (margin * 2);
         const rgbColor = getPrimaryColorRgb();
 
-        // Cover Page
+        // 1. Cover Page
         doc.setFillColor(rgbColor[0], rgbColor[1], rgbColor[2]);
-        doc.rect(0, 0, pageWidth, pageHeight, 'F');
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(24);
-        doc.setFont('helvetica', 'bold');
-        doc.text('BUKU PANDUAN PENGENDALIAN', pageWidth / 2, pageHeight / 2 - 60, { align: 'center' });
-        doc.setFontSize(18);
-        doc.setFont('helvetica', 'normal');
-        doc.text(guide.title.toUpperCase(), pageWidth / 2, pageHeight / 2, { align: 'center' });
-        doc.setFontSize(12);
-        doc.text((rsName).toUpperCase(), pageWidth / 2, pageHeight / 2 + 50, { align: 'center' });
+        doc.rect(0, 0, pageWidth, 18, 'F');
+        doc.rect(0, pageHeight - 18, pageWidth, 18, 'F');
 
+        // Outer Frame
+        doc.setDrawColor(rgbColor[0], rgbColor[1], rgbColor[2]);
+        doc.setLineWidth(2);
+        doc.rect(margin, margin + 15, contentWidth, pageHeight - (margin * 2) - 30);
+
+        doc.setTextColor(30, 41, 59);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(22);
+        doc.text((rsName).toUpperCase(), pageWidth / 2, 135, { align: 'center' });
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10.5);
+        doc.setTextColor(100, 116, 139);
+        doc.text('SISTEM MANAJEMEN STRATEGI & RISIKO RUMAH SAKIT (MANRISK RS)', pageWidth / 2, 155, { align: 'center' });
+
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(1);
+        doc.line(margin + 40, 185, pageWidth - margin - 40, 185);
+
+        // Primary Title Box
+        doc.setFillColor(rgbColor[0], rgbColor[1], rgbColor[2]);
+        doc.rect(margin + 20, 235, contentWidth - 40, 95, 'F');
+
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(14);
+        doc.text('DOKUMEN PEDOMAN OPERASIONAL BAKU', pageWidth / 2, 268, { align: 'center' });
+        doc.setFontSize(16);
+        doc.text(guide.title.toUpperCase(), pageWidth / 2, 298, { align: 'center' });
+
+        // Metadata Box
+        let metaY = 390;
+        doc.setDrawColor(226, 232, 240);
+        doc.setFillColor(248, 250, 252);
+        doc.roundedRect(margin + 30, metaY, contentWidth - 60, 150, 6, 6, 'FD');
+
+        metaY += 25;
+        doc.setTextColor(30, 41, 59);
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.text('INFORMASI KONTROL DOKUMEN', margin + 50, metaY);
+        metaY += 20;
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9.5);
+        doc.setTextColor(71, 85, 105);
+        doc.text(`Kode Dokumen     : ${guide.code || 'PED-2026/01'}`, margin + 50, metaY); metaY += 18;
+        doc.text(`Versi Dokumen    : ${guide.version || '2.0 (Edisi Digital)'}`, margin + 50, metaY); metaY += 18;
+        doc.text(`Tanggal Berlaku  : ${guide.effectiveDate || '01 Januari 2026'}`, margin + 50, metaY); metaY += 18;
+        doc.text(`Kategori          : Standar Operasional Instansi / SOP`, margin + 50, metaY); metaY += 18;
+        doc.text(`Penerbit          : Komite Mutu & Manajemen Risiko ${rsName}`, margin + 50, metaY);
+
+        doc.setFontSize(9);
+        doc.setTextColor(148, 163, 184);
+        doc.text(`Hak Cipta © 2026 ${rsName}. Seluruh Hak Cipta Dilindungi Undang-Undang.`, pageWidth / 2, pageHeight - 75, { align: 'center' });
+
+        // 2. Content Pages
         doc.addPage();
-        // KOP on Content page
+
         const addKop = () => {
             doc.setDrawColor(30, 41, 59);
             doc.setLineWidth(1.5);
-            doc.line(40, 100, pageWidth - 40, 100);
+            doc.line(margin, 82, pageWidth - margin, 82);
             doc.setLineWidth(0.5);
-            doc.line(40, 104, pageWidth - 40, 104);
+            doc.line(margin, 85, pageWidth - margin, 85);
 
             doc.setTextColor(30, 41, 59);
             doc.setFont('helvetica', 'bold');
-            doc.setFontSize(14);
-            doc.text((rsName).toUpperCase(), 40, 50);
+            doc.setFontSize(13);
+            doc.text((rsName).toUpperCase(), margin, 42);
 
             doc.setFont('helvetica', 'normal');
-            doc.setFontSize(9);
+            doc.setFontSize(8.5);
             doc.setTextColor(71, 85, 105);
-            doc.text(settings?.alamat || '', 40, 68);
-            doc.text(`Kota: ${settings?.kota || '-'} | Telp: ${settings?.telepon || '-'} | Email: ${settings?.email || '-'} | Web: ${settings?.website || '-'}`, 40, 84);
+            doc.text(settings?.alamat || 'Jl. KHM Mansyur No. 2, Kota Pekalongan, Jawa Tengah', margin, 56);
+            doc.text(`Telp: ${settings?.telepon || '(0285) 437000'} | Email: ${settings?.email || 'info@rsudbendan.com'} | Web: ${settings?.website || 'www.rsudbendan.com'}`, margin, 70);
+
+            // Document Badge Top-Right
+            doc.setFillColor(241, 245, 249);
+            doc.roundedRect(pageWidth - margin - 120, 36, 120, 34, 4, 4, 'F');
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(8);
+            doc.setTextColor(30, 41, 59);
+            doc.text(guide.code || 'PED-2026/01', pageWidth - margin - 60, 50, { align: 'center' });
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7.5);
+            doc.setTextColor(100, 116, 139);
+            doc.text(`Rev: ${guide.version || '2.0'}`, pageWidth - margin - 60, 62, { align: 'center' });
         };
 
         addKop();
 
-        let yPos = 130;
+        let yPos = 110;
+
+        // Header Title
         doc.setTextColor(rgbColor[0], rgbColor[1], rgbColor[2]);
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(16);
+        doc.setFontSize(15);
         doc.text(guide.title.toUpperCase(), margin, yPos);
-        yPos += 15;
+        yPos += 18;
 
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(10);
+        doc.setFont('helvetica', 'oblique');
+        doc.setFontSize(9.5);
         doc.setTextColor(100, 116, 139);
-        doc.text(guide.desc, margin, yPos);
-        yPos += 25;
+        const descLines = doc.splitTextToSize(guide.desc, contentWidth);
+        doc.text(descLines, margin, yPos);
+        yPos += (descLines.length * 12) + 14;
 
-        guide.sections.forEach(section => {
-            if (yPos > pageHeight - 120) {
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.5);
+        doc.line(margin, yPos, pageWidth - margin, yPos);
+        yPos += 18;
+
+        // Render Sections
+        const bodyFontSize = 11; // 11pt font size as requested
+        const lineHeightFactor = 1.25; // 1.25 line height as requested
+        const lineGap = bodyFontSize * lineHeightFactor; // 13.75pt
+
+        guide.sections.forEach((section) => {
+            if (yPos > pageHeight - 90) {
                 doc.addPage();
                 addKop();
-                yPos = 130;
+                yPos = 110;
             }
-            doc.setTextColor(30, 41, 59);
+
+            // Section Banner
+            doc.setFillColor(248, 250, 252);
+            doc.roundedRect(margin, yPos - 12, contentWidth, 24, 4, 4, 'F');
+            doc.setDrawColor(203, 213, 225);
+            doc.roundedRect(margin, yPos - 12, contentWidth, 24, 4, 4, 'D');
+
+            doc.setTextColor(15, 23, 42);
             doc.setFont('helvetica', 'bold');
-            doc.setFontSize(11);
-            doc.text(section.title, margin, yPos);
-            yPos += 15;
+            doc.setFontSize(11.5);
+            doc.text(section.title, margin + 10, yPos + 4);
+            yPos += 26;
 
-            doc.setFont('helvetica', 'normal');
-            doc.setFontSize(9.5);
-            doc.setTextColor(60, 60, 60);
+            const paragraphs = section.content.split('\n');
 
-            const splitText = doc.splitTextToSize(section.content, pageWidth - (margin * 2));
-            doc.text(splitText, margin, yPos);
-            yPos += (splitText.length * 14) + 20;
+            paragraphs.forEach((para) => {
+                const trimmed = para.trim();
+                if (!trimmed) {
+                    yPos += 5;
+                    return;
+                }
+
+                const isSubHeader = /^[0-9]\.[0-9]|^[a-z]\./.test(trimmed);
+                const isBullet = trimmed.startsWith('-') || trimmed.startsWith('*');
+
+                if (isSubHeader) {
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(11);
+                    doc.setTextColor(30, 41, 59);
+                } else if (isBullet) {
+                    doc.setFont('helvetica', 'normal');
+                    doc.setFontSize(bodyFontSize);
+                    doc.setTextColor(51, 65, 85);
+                } else {
+                    doc.setFont('helvetica', 'normal');
+                    doc.setFontSize(bodyFontSize);
+                    doc.setTextColor(51, 65, 85);
+                }
+
+                const lines = doc.splitTextToSize(trimmed, contentWidth);
+                const blockHeight = lines.length * lineGap;
+
+                if (yPos + blockHeight > pageHeight - 65) {
+                    doc.addPage();
+                    addKop();
+                    yPos = 110;
+                }
+
+                doc.text(lines, margin, yPos, { lineHeightFactor });
+                yPos += blockHeight + 5;
+            });
+
+            yPos += 14;
         });
 
-        // Add running footers
+        // Page Footers
         const totalPages = doc.getNumberOfPages();
         for (let i = 1; i <= totalPages; i++) {
             doc.setPage(i);
             if (i === 1) continue;
+            doc.setDrawColor(226, 232, 240);
+            doc.setLineWidth(0.5);
+            doc.line(margin, pageHeight - 35, pageWidth - margin, pageHeight - 35);
+
             doc.setTextColor(148, 163, 184);
+            doc.setFont('helvetica', 'normal');
             doc.setFontSize(8);
-            doc.text(settings?.footer || `Dokumen Internal ${rsName}`, 40, pageHeight - 20);
-            doc.text(`Halaman ${i - 1} dari ${totalPages - 1}`, pageWidth - 40, pageHeight - 20, { align: 'right' });
+            doc.text(settings?.footer || `Dokumen Resmi Internal - ${rsName}`, margin, pageHeight - 20);
+            doc.text(`Halaman ${i - 1} dari ${totalPages - 1}`, pageWidth - margin, pageHeight - 20, { align: 'right' });
         }
 
-        doc.save(`${guide.title.replace(/\s+/g, '_')}.pdf`);
+        doc.save(`${guide.title.replace(/\s+/g, '_')}_${rsName.replace(/\s+/g, '_')}.pdf`);
         setIsExporting(false);
     };
 
@@ -398,8 +518,8 @@ export default function PedomanPage() {
                                     ))}
                                 </div>
 
-                                <div className="pt-20 mt-20 border-t border-slate-100 flex justify-between items-center text-xs font-black text-slate-300 uppercase tracking-widest">
-                                    <span>Versi 1.0 (Digital Edition)</span>
+                                <div className="pt-20 mt-20 border-t border-slate-100 flex justify-between items-center text-xs font-black text-slate-400 uppercase tracking-widest">
+                                    <span>Versi {selectedGuide.version || '2.0 (Digital Edition)'} | Kode: {selectedGuide.code || 'PED-2026'}</span>
                                     <span>{appName} &copy; 2026</span>
                                 </div>
                             </div>

@@ -49,11 +49,26 @@ const getDisplayRealisasi = (val: string | null | undefined): string => {
     return d.rawText || '-';
 };
 
+// Helper functions for mathematically exact SVG arcs (prevents curve distortion / "benjol")
+function polarToCartesian(cx: number, cy: number, r: number, angleInDegrees: number) {
+    const angleInRadians = (angleInDegrees * Math.PI) / 180.0;
+    return {
+        x: cx + r * Math.cos(angleInRadians),
+        y: cy - r * Math.sin(angleInRadians),
+    };
+}
+
+function describeArc(cx: number, cy: number, r: number, startAngle: number, endAngle: number) {
+    const start = polarToCartesian(cx, cy, r, startAngle);
+    const end = polarToCartesian(cx, cy, r, endAngle);
+    const largeArcFlag = Math.abs(endAngle - startAngle) > 180 ? '1' : '0';
+    return `M ${start.x.toFixed(2)} ${start.y.toFixed(2)} A ${r} ${r} 0 ${largeArcFlag} 1 ${end.x.toFixed(2)} ${end.y.toFixed(2)}`;
+}
+
 // --- Speedometer Gauge Component ---
 function SpeedometerGauge({ value, target, kpiName, satuan = '%' }: { value: number; target: number; kpiName: string; satuan?: string }) {
     let pct = target > 0 ? (value / target) * 100 : 0;
     pct = Math.min(Math.max(pct, 0), 150);
-    const clampedPct = Math.min(pct, 100);
 
     let status: 'AMAN' | 'WASPADA' | 'BAHAYA';
     if (pct >= 100) status = 'AMAN';
@@ -61,40 +76,95 @@ function SpeedometerGauge({ value, target, kpiName, satuan = '%' }: { value: num
     else status = 'BAHAYA';
 
     const statusMeta = {
-        AMAN: { bg: 'bg-emerald-600', text: 'text-emerald-600' },
-        WASPADA: { bg: 'bg-amber-500', text: 'text-amber-600' },
-        BAHAYA: { bg: 'bg-rose-600', text: 'text-rose-600' },
+        AMAN: {
+            bg: 'bg-emerald-500/10 text-emerald-700 border-emerald-200',
+            text: 'text-emerald-600',
+            dot: 'bg-emerald-500',
+        },
+        WASPADA: {
+            bg: 'bg-amber-500/10 text-amber-700 border-amber-200',
+            text: 'text-amber-600',
+            dot: 'bg-amber-500',
+        },
+        BAHAYA: {
+            bg: 'bg-rose-500/10 text-rose-700 border-rose-200',
+            text: 'text-rose-600',
+            dot: 'bg-rose-500',
+        },
     }[status];
 
-    const needleAngle = -90 + (clampedPct * 180) / 100;
+    // Scale 0% to 120% mapped across 180° semi-circle arc (180° to 0° polar angle)
+    // Red: 0% to 70% (180° to 75°)
+    // Amber: 70% to 100% (75° to 30°)
+    // Green: 100% to 120% (30° to 0°)
+    const cx = 60;
+    const cy = 60;
+    const r = 45;
+    const strokeWidth = 9;
+
+    const redArc = describeArc(cx, cy, r, 180, 75);
+    const amberArc = describeArc(cx, cy, r, 75, 30);
+    const greenArc = describeArc(cx, cy, r, 30, 0);
+
+    // Needle rotation angle (-90° to +90°)
+    const clampedPctForNeedle = Math.min(Math.max(pct, 0), 120);
+    const needleAngle = -90 + (clampedPctForNeedle / 120) * 180;
 
     return (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col justify-between h-full">
-            <div className="p-3 flex flex-col items-center text-center">
-                <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase truncate max-w-full block mb-1 line-clamp-1">{kpiName}</span>
-                <div className="relative w-32 h-[68px] flex items-center justify-center overflow-hidden mt-1">
-                    <svg className="w-full h-full" viewBox="0 0 120 68">
-                        {/* Background track */}
-                        <path d="M 10 60 A 50 50 0 0 1 110 60" fill="none" stroke="#e2e8f0" strokeWidth="10" strokeLinecap="round" />
-                        {/* Red zone 0-70% */}
-                        <path d="M 10 60 A 50 50 0 0 1 43.64 17.27" fill="none" stroke="#ef4444" strokeWidth="10" />
-                        {/* Amber zone 70-100% */}
-                        <path d="M 43.64 17.27 A 50 50 0 0 1 85 13" fill="none" stroke="#f59e0b" strokeWidth="10" />
-                        {/* Green zone >100% */}
-                        <path d="M 85 13 A 50 50 0 0 1 110 60" fill="none" stroke="#10b981" strokeWidth="10" />
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-4 flex flex-col justify-between h-full hover:shadow-md transition-all duration-200 group">
+            <div className="flex flex-col items-center text-center">
+                {/* KPI Title */}
+                <h4
+                    className="text-xs font-bold text-slate-700 tracking-tight uppercase truncate max-w-full block mb-2 line-clamp-1 group-hover:text-[#137fec] transition-colors"
+                    title={kpiName}
+                >
+                    {kpiName}
+                </h4>
+
+                {/* Speedometer Arc SVG */}
+                <div className="relative w-full max-w-[140px] aspect-[120/70] flex items-center justify-center my-1">
+                    <svg className="w-full h-full overflow-visible" viewBox="0 0 120 70">
+                        {/* Background subtle track */}
+                        <path d={describeArc(cx, cy, r, 180, 0)} fill="none" stroke="#f1f5f9" strokeWidth={strokeWidth + 2} strokeLinecap="round" />
+
+                        {/* Red zone (0 - 70%) */}
+                        <path d={redArc} fill="none" stroke="#ef4444" strokeWidth={strokeWidth} strokeLinecap="round" />
+
+                        {/* Amber zone (70 - 100%) */}
+                        <path d={amberArc} fill="none" stroke="#f59e0b" strokeWidth={strokeWidth} />
+
+                        {/* Green zone (100 - 120%) */}
+                        <path d={greenArc} fill="none" stroke="#10b981" strokeWidth={strokeWidth} strokeLinecap="round" />
+
                         {/* Needle */}
-                        <line x1="60" y1="60" x2="60" y2="18" stroke="#1e293b" strokeWidth="2.5" strokeLinecap="round" transform={`rotate(${needleAngle} 60 60)`} />
-                        <circle cx="60" cy="60" r="5" fill="#1e293b" />
-                        <circle cx="60" cy="60" r="2.5" fill="white" />
+                        <g transform={`rotate(${needleAngle} ${cx} ${cy})`} className="transition-transform duration-500 ease-out">
+                            <line x1={cx} y1={cy} x2={cx} y2={cy - 34} stroke="#1e293b" strokeWidth="2.5" strokeLinecap="round" />
+                            <circle cx={cx} cy={cy - 34} r="1.5" fill="#ef4444" />
+                        </g>
+
+                        {/* Pivot Cap */}
+                        <circle cx={cx} cy={cy} r="6" fill="#1e293b" />
+                        <circle cx={cx} cy={cy} r="2.5" fill="#ffffff" />
                     </svg>
-                    <div className="absolute bottom-0 inset-x-0 text-center">
-                        <span className={`text-lg font-extrabold leading-none ${statusMeta.text}`}>{value.toLocaleString('id-ID')}</span>
-                        <span className="text-[9px] text-slate-400 font-medium block">{satuan}</span>
-                    </div>
                 </div>
-                <span className="text-[10px] font-semibold text-slate-500 mt-1">Target: ≥ {target} {satuan}</span>
+
+                {/* Value & Target Display */}
+                <div className="mt-1 flex flex-col items-center">
+                    <div className="flex items-baseline gap-0.5">
+                        <span className={`text-xl font-black tracking-tight ${statusMeta.text}`}>
+                            {value.toLocaleString('id-ID')}
+                        </span>
+                        <span className="text-xs font-semibold text-slate-400">{satuan}</span>
+                    </div>
+                    <span className="text-[11px] font-medium text-slate-500 mt-0.5">
+                        Target: <span className="font-semibold text-slate-700">≥ {target} {satuan}</span>
+                    </span>
+                </div>
             </div>
-            <div className={`w-full py-1 text-center text-[10px] font-bold text-white uppercase tracking-widest ${statusMeta.bg}`}>
+
+            {/* Status Footer Badge */}
+            <div className={`mt-3 w-full py-1 px-2 rounded-lg text-center text-[10px] font-extrabold uppercase tracking-wider border ${statusMeta.bg} flex items-center justify-center gap-1.5`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${statusMeta.dot}`} />
                 {status}
             </div>
         </div>

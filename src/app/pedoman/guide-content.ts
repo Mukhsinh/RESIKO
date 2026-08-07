@@ -1,113 +1,169 @@
-export const GUIDES_CONTENT = [
+export interface GuideSection {
+    title: string;
+    content: string;
+}
+
+export interface GuideItem {
+    id: string;
+    title: string;
+    code: string;
+    desc: string;
+    icon: string;
+    version: string;
+    effectiveDate: string;
+    sections: GuideSection[];
+}
+
+export const GUIDES_CONTENT: GuideItem[] = [
     {
         id: 'risiko',
         title: 'Panduan Manajemen Risiko',
-        desc: 'Standar ISO 31000:2018 & SNARS untuk pengelolaan risiko rumah sakit.',
+        code: 'PED-MR-2026/01',
+        desc: 'Pedoman Baku Pengelolaan Risiko Terintegrasi Berdasarkan ISO 31000:2018 dan Standar Akreditasi Kemenkes RI (STARKES/SNARS).',
         icon: '📘',
+        version: '2.0 (Edisi Digital)',
+        effectiveDate: '01 Januari 2026',
         sections: [
             {
-                title: 'I. Pendahuluan',
-                content: `Manajemen risiko di rumah sakit merupakan komponen krusial dalam menjamin keselamatan pasien (patient safety) dan keberlanjutan operasional. Panduan ini disusun berdasarkan standar internasional ISO 31000:2018 dan diselaraskan dengan standar akreditasi rumah sakit (SNARS).`
+                title: 'BAB I: PENDAHULUAN DAN LANDASAN REGULASI',
+                content: `1.1 Latar Belakang
+Manajemen Risiko di Fasilitas Pelayanan Kesehatan (Rumah Sakit) merupakan fondasi utama dalam menjamin keselamatan pasien (Patient Safety), keselamatan kerja pegawai (K3RS), serta keberlanjutan operasional dan finansial institusi. Rumah sakit mengelola berbagai tingkat kompleksitas medis, teknologi, dan administrasi yang berpotensi menimbulkan insiden medis maupun non-medis jika tidak dikelola secara terstruktur.
+
+1.2 Landasan Hukum dan Regulasi Baku
+Dokumen pedoman ini disusun dan diselaraskan dengan regulasi nasional dan standar akreditasi internasional, antara lain:
+a. Undang-Undang Republik Indonesia Nomor 17 Tahun 2023 tentang Kesehatan.
+b. Peraturan Menteri Kesehatan RI Nomor 25 Tahun 2019 tentang Penerapan Manajemen Risiko di Fasilitas Pelayanan Kesehatan.
+c. Standar Akreditasi Rumah Sakit (STARKES / SNARS) Bab Peningkatan Mutu dan Keselamatan Pasien (PMKP) serta Bab Tata Kelola Rumah Sakit (TKRS).
+d. Standar Internasional ISO 31000:2018 Risk Management — Guidelines.
+
+1.3 Maksud dan Tujuan
+Panduan ini dirancang sebagai petunjuk operasional baku bagi seluruh pimpinan, komite mutu, kepala bagian/bidang, dan unit kerja dalam mengoperasikan aplikasi ManRisk RS secara akurat, terintegrasi, dan terdokumentasi secara digital.`
             },
             {
-                title: 'II. Kerangka Kerja Manajemen Risiko',
-                content: `Manajemen risiko tidak berdiri sendiri, melainkan terintegrasi dalam tata kelola institusi. Elemen utama meliputi:\n- Kepemimpinan dan Komitmen\n- Integrasi dalam Proses Bisnis\n- Desain Arsitektur Manajemen Risiko\n- Implementasi yang Terukur\n- Evaluasi Berkelanjutan`
+                title: 'BAB II: TATA KELOLA DAN TAKSONOMI KATEGORI RISIKO',
+                content: `2.1 Kerangka Kerja Tata Kelola (Three Lines Model)
+Pengelolaan risiko dalam sistem ini mengadopsi prinsip Tiga Lini Pertahanan:
+- Lini Pertama (Unit Kerja / Instalasi): Sebagai Pemilik Risiko (Risk Owner) yang bertanggung jawab melakukan identifikasi, penilaian awal, dan pelaksanaan tindakan mitigasi harian.
+- Lini Kedua (Komite Mutu & Manajemen Risiko): Berfungsi melakukan pembinaan, pemantauan, validasi analisis risiko, dan penyusunan Profil Risiko Rumah Sakit.
+- Lini Ketiga (Satuan Pengawas Internal / SPI): Melakukan pemantauan independen (assurance) atas efektivitas kerangka manajemen risiko institusi.
+
+2.2 Taksonomi 6 Kategori Risiko Baku Rumah Sakit
+Dalam aplikasi ManRisk RS, setiap risiko yang diidentifikasi wajib dikelompokkan ke dalam salah satu dari 6 kategori baku berikut:
+1. Risiko Operasional: Risiko yang berkaitan dengan kegagalan proses medis/klinis, pelayanan radiologi, laboratorium, kerusakan fasilitas, gangguan SIMRS, K3RS, atau keterbatasan SDM.
+2. Risiko Kepatuhan: Risiko timbulnya sanksi administrasi atau denda akibat tidak terpenuhinya regulasi Kemenkes, aturan klaim BPJS Kesehatan, atau standar izin operasional.
+3. Risiko Legal: Risiko tuntutan hukum, sengketa malpraktik medis, atau sengketa perikatan kerja sama (kontrak vendor/mitra).
+4. Risiko Kebijakan: Risiko dampak dari perubahan regulasi tarif nasional, kebijakan sistem JKN/BPJS, maupun perubahan Surat Keputusan Direksi.
+5. Risiko Reputasi: Risiko penurunan tingkat kepercayaan masyarakat akibat penanganan keluhan pasien yang kurang responsif atau pemberitaan negatif di media.
+6. Risiko Fraud: Risiko tindakan penyimpangan, penggelembungan klaim finansial, pencurian sarana, atau penyalahgunaan wewenang organisasi.`
             },
             {
-                title: 'III. Proses Manajemen Risiko (ISO 31000)',
-                content: `1. **Penetapan Ruang Lingkup, Konteks, dan Kriteria**: Mendefinisikan parameter eksternal dan internal yang menjadi batasan pengelolaan.\n2. **Identifikasi Risiko**: Menemukan, mengenali, dan mendeskripsikan risiko yang dapat mencegah pencapaian tujuan.\n3. **Analisis Risiko**: Memahami sifat risiko dan menentukan tingkat risiko (Likelihood x Impact).\n4. **Evaluasi Risiko**: Membandingkan hasil analisis dengan kriteria risiko untuk menentukan kebutuhan penanganan.\n5. **Penanganan Risiko (Mitigasi)**: Memilih dan mengimplementasikan opsi untuk memodifikasi risiko.`
-            },
-            {
-                title: 'IV. Integrasi SNARS',
-                content: `Sistem ManRisk RS memfasilitasi pemenuhan standar PMKP (Peningkatan Mutu dan Keselamatan Pasien) dengan menyediakan database risiko yang terstruktur, memudahkan audit, dan pelaporan insiden secara preventif.`
+                title: 'BAB III: PROSES ALUR KERJA RISIKO DALAM SISTEM',
+                content: `3.1 Penetapan Konteks dan Identifikasi Risiko
+Proses diawali oleh Kepala Unit Kerja dengan menetapkan sasaran operasional dan mengidentifikasi potensi risiko menggunakan formula pernyataan baku:
+[Penyebab (Root Cause)] -> mengakibatkan -> [Peristiwa Risiko (Risk Event)] -> sehingga timbul -> [Dampak (Impact)].
+
+*Contoh Kasus Konkret di Rumah Sakit*:
+- Penyebab: Keterlambatan kalibrasi berkala pada unit alat CT-Scan di Radiologi.
+- Peristiwa Risiko: Terjadi distorsi hasil gambar citra radiologi saat pemeriksaan pasien darurat.
+- Dampak: Keterlambatan penegakan diagnosis oleh Dokter DPJP dan potensi komplain/tuntutan keluarga pasien.
+
+3.2 Analisis dan Matriks Penilaian Risiko (5x5)
+Tingkat Risiko dihitung secara otomatis oleh sistem berdasarkan rumus:
+Skor Risiko = Skala Probabilitas (1-5) x Skala Dampak (1-5)
+
+a. Skala Probabilitas (Likelihood):
+1 = Sangat Jarang (< 1x dalam 1 tahun)
+2 = Jarang (1-2x dalam 1 tahun)
+3 = Kadang-kadang (3-6x dalam 1 tahun)
+4 = Sering (7-12x dalam 1 tahun)
+5 = Sangat Sering (> 12x dalam 1 tahun)
+
+b. Skala Dampak (Severity / Impact):
+1 = Insignifikan (Tidak ada cedera, kerugian finansial minimal < Rp 1 Juta)
+2 = Minor (Cedera ringan/P3K, kerugian Rp 1 Juta - Rp 10 Juta)
+3 = Moderat (Cedera sedang/perawatan medis, kerugian Rp 10 Juta - Rp 50 Juta)
+4 = Mayor (Cedera berat/cacat permanen, kerugian Rp 50 Juta - Rp 250 Juta)
+5 = Katastrofik (Kematian pasien/pegawai, kerugian > Rp 250 Juta atau izin operasional terancam)
+
+c. Tingkat Risiko (Risk Matrix Level):
+- Skor 15 - 25 (Sangat Tinggi / Ekstrem - Warna Merah): Wajib dilakukan mitigasi segera (< 24 jam) dengan pengawasan langsung Direksi.
+- Skor 10 - 14 (Tinggi - Warna Oranye): Memerlukan tindak mitigasi khusus oleh Kepala Bagian/Bidang (< 7 hari).
+- Skor 5 - 9 (Sedang - Warna Kuning): Dikelola dengan perbaikan SOP internal unit kerja (< 14 hari).
+- Skor 1 - 4 (Rendah - Warna Hijau): Pemantauan berkala dalam prosedur rutin.
+
+3.3 Rencana Penanganan (Mitigasi) dan Evaluasi Residual Risk
+- Opsi Mitigasi: Mencegah (Avoid), Mengurangi Dampak/Probabilitas (Mitigate), Membagi Risiko (Transfer/Insurance), atau Menerima Risiko (Accept).
+- Setiap mitigasi wajib menetapkan Rencana Aksi, Penanggung Jawab (PIC), Target Waktu, dan Alokasi Sumber Daya.
+- Setelah penanganan berjalan, unit kerja menginput Penilaian Residual Risk (Risiko Sisa) untuk mengevaluasi penurunan skor risiko pada Dashboard dan Laporan Profil Risiko RS.`
             }
         ]
     },
     {
         id: 'strategi',
         title: 'Panduan Manajemen Strategi',
-        desc: 'Metodologi penyusunan Renstra dan cascading KPI berbasis BSC.',
+        code: 'PED-MS-2026/02',
+        desc: 'Pedoman Baku Perencanaan Strategis Rumah Sakit Menggunakan Metode SWOT, Matriks TOWS, Diagram Kartesius, dan Balanced Scorecard (BSC).',
         icon: '🎯',
+        version: '2.0 (Edisi Digital)',
+        effectiveDate: '01 Januari 2026',
         sections: [
             {
-                title: 'I. Konsep Balanced Scorecard (BSC)',
-                content: `Sistem ini menggunakan pendekatan BSC untuk menerjemahkan visi dan misi ke dalam tindakan strategis melalui empat perspektif:\n1. **Perspektif Keuangan**: Bagaimana kita dilihat oleh penyandang dana?\n2. **Perspektif Pelanggan**: Bagaimana pasien melihat kita?\n3. **Perspektif Proses Internal**: Di mana kita harus unggul?\n4. **Perspektif Pembelajaran & Pertumbuhan**: Bagaimana kita terus berkembang?`
+                title: 'BAB I: LANDASAN PERENCANAAN STRATEGIS RUMAH SAKIT',
+                content: `1.1 Pendahuluan Perencanaan Strategis
+Manajemen Strategi adalah proses sistematis dalam merumuskan, mengimplementasikan, dan mengevaluasi keputusan lintas fungsi yang memungkinkan Rumah Sakit mencapai tujuan jangka panjang. Penyelarasan strategi bertujuan agar Visi dan Misi institusi diterjemahkan secara konsisten hingga ke tingkat operasional terdepan di setiap unit kerja.
+
+1.2 Hierarki Perencanaan Institusi
+a. Tingkat Strategis Institusi: Visi, Misi, Nilai-Nilai Tata Nilai, dan Rencana Strategis (Renstra 5 Tahunan) yang ditetapkan oleh Direksi.
+b. Tingkat Taktis Direktorat/Bagian: Peta Strategis dan Rencana Kerja Tahunan (RKT) Bagian/Bidang.
+c. Tingkat Operasional Unit: Cascading Indikator Kinerja Utama (IKU / KPI) dan Action Plan harian unit kerja.`
             },
             {
-                title: 'II. Analisis Situasi (SWOT & TOWS)',
-                content: `Sebelum menyusun strategi, unit kerja wajib melakukan:\n- **SWOT**: Identifikasi Strength, Weakness, Opportunity, dan Threat.\n- **TOWS**: Membuat strategi SO, WO, ST, dan WT berdasarkan pemetaan Kartesius.\n- **Matriks Kartesius**: Memvisualisasikan posisi strategis unit (Agresif, Diversifikasi, Ubah Strategi, atau Defensif).`
+                title: 'BAB II: ANALISIS SITUASI (SWOT & MATRIKS TOWS)',
+                content: `2.1 Analisis Lingkungan Strategis (SWOT)
+Unit kerja wajib mengidentifikasi 4 elemen situasi internal dan eksternal:
+- Strength (Kekuatan): Keunggulan internal (SDM spesialis, alkes canggih, lokasi strategis).
+- Weakness (Kelemahan): Keterbatasan internal (area parkir terbatas, waktu tunggu obat lama).
+- Opportunity (Peluang): Tren eksternal menguntungkan (kebijakan JKN baru, pertumbuhan penduduk).
+- Threat (Ancaman): Tantangan eksternal (persaingan RS swasta baru, perubahan regulasi tarif).
+
+2.2 Pemetaan Posisi Strategis pada Diagram Kartesius
+Berdasarkan pembobotan total skor IFAS (Internal) dan EFAS (Eksternal), posisi unit kerja terbagi ke dalam 4 Kuadran Kartesius:
+- Kuadran I (S-O / Agresif): Posisi prima. Fokus pada strategi ekspansi layanan, inovasi produk baru, dan pemanfaatan peluang maksimal.
+- Kuadran II (S-T / Diversifikasi): Posisi kuat namun penuh ancaman. Fokus menggunakan kekuatan internal untuk menciptakan layanan baru / diversifikasi pasar.
+- Kuadran III (W-O / Ubah Strategi - Turnaround): Peluang pasar besar namun terhambat kelemahan internal. Fokus membenahi proses bisnis internal agar mampu menangkap peluang.
+- Kuadran IV (W-T / Defensif): Posisi rawan. Fokus efisiensi ketat, meminimalkan kelemahan, dan bertahan dari ancaman eksternal.
+
+2.3 Formulasi Inisiatif Strategis TOWS (Contoh Konkret)
+- Strategi SO: Mengoptimalkan SDM Sub-Spesialis (S) + Peluang Tren Penyakit Degeneratif (O) -> Pembentukan Pusat Layanan Unggulan Jantung & Pembuluh Darah (Vascular Center).
+- Strategi WO: Menanggulangi waktu tunggu pendaftaran (W) + Memanfaatkan teknologi smartphone (O) -> Mengembangkan Sistem Pendaftaran Mandiri Mobile Apps & KIOSK.`
             },
             {
-                title: 'III. Cascading KPI',
-                content: `Proses penurunan Indikator Kinerja Utama (IKU) dari level Direktur (Level 0) ke Kepala Bagian (Level 1) hingga ke tingkat unit kerja. Hal ini memastikan keselarasan (alignment) seluruh komponen rumah sakit menuju satu tujuan yang sama.`
-            }
-        ]
-    },
-    {
-        id: 'template',
-        title: 'Template Identifikasi Risiko',
-        desc: 'Template standar pengisian form identifikasi dan penilaian risiko.',
-        icon: '📋',
-        sections: [
-            {
-                title: 'I. Kamus Risiko',
-                content: `Dalam mengisi form identifikasi, gunakan terminologi yang baku:\n- **Kategori Risiko**: Risiko Kebijakan, Risiko Reputasi, Risiko Fraud, Risiko Legal, Risiko Kepatuhan, Risiko Operasional.\n- **Penyebab**: Akar masalah (Root Cause).\n- **Dampak**: Kerugian yang timbul (Cedera, Finansial, Hukum).`
+                title: 'BAB III: BALANCED SCORECARD (BSC) DAN CASCADING KPI',
+                content: `3.1 Empat Perspektif Balanced Scorecard
+ManRisk RS menerapkan pendekatan BSC untuk mengukur keberhasilan secara seimbang:
+1. Perspektif Keuangan (Financial): Pertumbuhan pendapatan, efisiensi biaya operasional, pencapaian target revenue, dan kecukupan Cash Ratio.
+2. Perspektif Pelanggan (Customer): Indeks Kepuasan Pasien (IKP), pencapaian SPM waktu tunggu, penanganan komplain, dan retensi pasien.
+3. Perspektif Proses Bisnis Internal: Kepatuhan Clinical Pathway, angka keselamatan pasien (Zero Sentinel), efisiensi BOR/LOS, dan akreditasi.
+4. Perspektif Pembelajaran & Pertumbuhan: Jam pelatihan SDM per tahun, tingkat kepuasan pegawai, kepemimpinan, dan tingkat digitalisasi sistem.
+
+3.2 Penurunan Indikator Kinerja Utama (Cascading KPI)
+Cascading dilakukan secara hierarkis:
+- Level 0 (Direksi): Target Strategis Utama Institusi (contoh: Cash Ratio >= 1%, IKP >= 88%).
+- Level 1 (Kepala Bagian/Bidang): Turunan indikator sasaran direksi.
+- Level 2 (Kepala Unit Kerja): Operasionalisasi indikator unit.
+
+Setiap penetapan target KPI wajib memenuhi kaidah SMART (Specific, Measurable, Achievable, Relevant, Time-bound).`
             },
             {
-                title: 'II. Matriks Penilaian Risiko (5x5)',
-                content: `Tingkat Risiko dihitung berdasarkan:\n- **Skala Probabilitas (1-5)**: Dari 'Sangat Jarang' hingga 'Sangat Sering'.\n- **Skala Dampak (1-5)**: Dari 'Minimal/Insignifikan' hingga 'Katastrofik'.\n- **Skor Risiko**: Hasil perkalian keduanya yang menentukan warna (Hijau, Kuning, Oranye, Merah).`
-            }
-        ]
-    },
-    {
-        id: 'excel',
-        title: 'Panduan Import Data (Excel)',
-        desc: 'Cara menggunakan fitur unduh template dan import data massal.',
-        icon: '📊',
-        sections: [
-            {
-                title: 'I. Persiapan File',
-                content: `1. Gunakan tombol **Unduh Template** di setiap halaman Master Data.\n2. Pastikan tidak mengubah struktur header atau urutan kolom.\n3. Simpan file dalam format .xlsx atau .xls.`
-            },
-            {
-                title: 'II. Validasi Data',
-                content: `- **Tahun**: Harus angka unik (contoh: 2026).\n- **Email**: Harus valid dan belum pernah terdaftar.\n- **Role**: Pilih antara 'superadmin' atau 'user_unit'.\n- **Unit ID**: Wajib diisi untuk user dengan role 'user_unit'.`
-            },
-            {
-                title: 'III. Troubleshooting',
-                content: `Jika import gagal:\n- Periksa apakah ada baris kosong di tengah data.\n- Pastikan koneksi internet stabil.\n- Cek apakah password pengguna minimal 8 karakter.`
-            }
-        ]
-    },
-    {
-        id: 'ai',
-        title: 'Panduan Pengaturan AI',
-        desc: 'Cara mengkonfigurasi model AI dan menggunakan fitur bantuan AI.',
-        icon: '🤖',
-        sections: [
-            {
-                title: 'I. Konfigurasi API',
-                content: `Sistem ini menggunakan Google Gemini AI. Administrative user dapat mengatur API key melalui halaman Pengaturan AI. Pastikan kuota API masih tersedia untuk fitur bantuan analisis.`
-            },
-            {
-                title: 'II. Fitur Bantuan AI',
-                content: `- **Smart Analysis**: Memberikan saran kategori dan level risiko secara otomatis.\n- **Strategy Recommender**: Memberikan opsi strategi TOWS berdasarkan data SWOT yang diinput.\n- **KPI Generator**: Membantu merumuskan indikator keberhasilan yang SMART (Specific, Measurable, Achievable, Relevant, Time-bound).`
-            }
-        ]
-    },
-    {
-        id: 'manual',
-        title: 'Manual Pengguna Lengkap',
-        desc: 'Panduan lengkap penggunaan aplikasi ManRisk RS dari awal hingga akhir.',
-        icon: '📖',
-        sections: [
-            {
-                title: 'I. Akses Sistem',
-                content: `Login menggunakan email dan password yang telah didaftarkan oleh administrator. Gunakan dashboard untuk melihat ringkasan profil risiko unit Anda secara real-time.`
-            },
-            {
-                title: 'II. Workflow Utama',
-                content: `1. **Master Data**: Setup unit, tahun, dan pengguna.\n2. **Manajemen Strategi**: Pengisian Visi Misi -> SWOT -> TOWS -> RKT -> Monitoring.\n3. **Manajemen Risiko**: Identifikasi -> Analisis -> Evaluasi -> Penanganan.\n4. **Laporan**: Unduh PDF Profil Risiko dan Evaluasi IKT.`
+                title: 'BAB IV: MONITORING REALISASI DAN DASHBOARD CAPAIAN',
+                content: `4.1 Pemantauan Realisasi Periodik
+Realisasi KPI diinput secara berkala (Tahunan, Semesteran, Triwulanan, atau Bulanan) sesuai karakteristik indikator yang ditetapkan.
+
+4.2 Evaluasi Capaian dan Speedometer Gauge
+Tingkat capaian dihitung berdasarkan rumus: (Realisasi / Target) x 100%. Sistem memvisualisasikan status ke dalam 3 kategori:
+- Status AMAN (Capaian >= 100% - Warna Hijau): Target terpenuhi atau melampaui standar.
+- Status WASPADA (Capaian 70% - 99% - Warna Oranye): Capaian mendekati target, memerlukan pemantauan ketat.
+- Status BAHAYA (Capaian < 70% - Warna Merah): Capaian di bawah standar, unit kerja wajib membuat Rencana Tindakan Korektif (Corrective Action Plan).`
             }
         ]
     }

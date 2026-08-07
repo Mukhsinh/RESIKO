@@ -24,7 +24,20 @@ function notifyListeners() {
 
 async function fetchProfileData(): Promise<UserProfile | null> {
     try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+        if (userError) {
+            const errMsg = (userError.message || '').toLowerCase();
+            if (errMsg.includes('refresh token') || userError.status === 400 || userError.name === 'AuthApiError') {
+                console.warn('Invalid refresh token detected. Purging stale auth token...');
+                cachedProfile = null;
+                if (typeof window !== 'undefined') {
+                    localStorage.removeItem('user_profile_cache');
+                    document.cookie = 'sb-access-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+                }
+            }
+        }
+
         if (user) {
             const { data: profileData, error } = await supabase
                 .from('profiles')
@@ -64,8 +77,15 @@ async function fetchProfileData(): Promise<UserProfile | null> {
         profileLoading = false;
         notifyListeners();
         return null;
-    } catch (e) {
-        console.error('Error fetching user profile', e);
+    } catch (e: any) {
+        const errMsg = (e?.message || '').toLowerCase();
+        if (errMsg.includes('refresh token')) {
+            cachedProfile = null;
+            if (typeof window !== 'undefined') {
+                localStorage.removeItem('user_profile_cache');
+                document.cookie = 'sb-access-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+            }
+        }
         profileLoading = false;
         notifyListeners();
         return null;

@@ -159,31 +159,139 @@ async function callOpenRouter(apiKey: string, systemPrompt: string, userPrompt: 
 
 export async function POST(req: Request) {
     try {
-        const { prompt: userPrompt, label } = await req.json();
+        const body = await req.json();
+        const { prompt: userPrompt, label, mode, contextData } = body;
 
-        // 1. Fetch AI configurations from Supabase
-        const { data: aiConfig, error: fetchErr } = await supabaseAdmin
-            .from('pengaturan_ai')
-            .select('*')
-            .order('updated_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
+        // 1. Fetch AI configurations from Supabase with fallback to process.env
+        let modelTerpilih = 'auto';
+        let openaiKey = process.env.OPENAI_API_KEY || '';
+        let geminiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
+        let openrouterKey = process.env.OPENROUTER_API_KEY || '';
+        let baseSystemPrompt = 'Kamu adalah asisten profesional manajemen risiko dan manajemen strategi rumah sakit (ISO 31000 & STARKES Kemenkes RI).';
+        let isAiActive = true;
+        let extra: Record<string, any> = {};
 
-        if (fetchErr || !aiConfig) {
-            return NextResponse.json({ error: 'Konfigurasi AI tidak ditemukan. Silakan atur terlebih dahulu.' }, { status: 400 });
+        try {
+            const { data: aiConfig, error: fetchErr } = await supabaseAdmin
+                .from('pengaturan_ai')
+                .select('*')
+                .order('updated_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            if (!fetchErr && aiConfig) {
+                if (!aiConfig.aktif) {
+                    isAiActive = false;
+                }
+                modelTerpilih = aiConfig.model_ai_terpilih || modelTerpilih;
+                extra = aiConfig.konfigurasi_tambahan || {};
+                if (extra.openai_key) openaiKey = extra.openai_key;
+                if (extra.gemini_key) geminiKey = extra.gemini_key;
+                if (extra.openrouter_key) openrouterKey = extra.openrouter_key;
+                if (extra.system_prompt) baseSystemPrompt = extra.system_prompt;
+            }
+        } catch (dbErr) {
+            console.warn('DB AI Config fetch error, falling back to env vars:', dbErr);
         }
 
-        if (!aiConfig.aktif) {
+        if (!isAiActive) {
             return NextResponse.json({ error: 'Fitur bantuan AI dinonaktifkan oleh administrator.' }, { status: 400 });
         }
 
-        const modelTerpilih = aiConfig.model_ai_terpilih;
-        const extra = aiConfig.konfigurasi_tambahan || {};
+        // If no keys are provided from DB or Env, return helpful error
+        if (!openaiKey && !geminiKey && !openrouterKey) {
+            return NextResponse.json({
+                error: 'API Key AI (Gemini / OpenAI / OpenRouter) belum terkonfigurasi pada sistem maupun environment server.'
+            }, { status: 400 });
+        }
 
-        const openaiKey = extra.openai_key || '';
-        const geminiKey = extra.gemini_key || '';
-        const openrouterKey = extra.openrouter_key || '';
-        const baseSystemPrompt = extra.system_prompt || 'Kamu adalah asisten manajemen risiko RS.';
+        // Auto-select provider if default is auto
+        if (modelTerpilih === 'auto' || !modelTerpilih) {
+            if (geminiKey) modelTerpilih = 'gemini';
+            else if (openaiKey) modelTerpilih = 'openai';
+            else if (openrouterKey) modelTerpilih = 'openrouter';
+        }
+
+        // Handle Simultaneous Multi-Field Risk Generation Mode
+        if (mode === 'simultaneous_risk') {
+            const systemPrompt = baseSystemPrompt + `
+Tugas Anda adalah menganalisis input risiko rumah sakit dan menghasilkan rekomendasi draft simultan untuk 4 bidang:
+1. Deskripsi Risiko (Formula: [Kejadian Risiko] akibat [Penyebab utama] sehingga berpotensi [Dampak klinis/operasional RS])
+2. Akar Penyebab (Root Cause Analysis mendalam berbasis 5-Why/Fishbone)
+3. Penyebab Risiko (Faktor-faktor penyebab teknis, SDM, atau sarana)
+4. Dampak Risiko (Dampak langsung pada keselamatan pasien, mutu klinis, finansial, atau reputasi RS)
+
+PERATURAN OUTPUT (SANGAT KETAT):
+- Anda HARUS mengembalikan HANYA sebuah objek JSON valid (tanpa tag markdown json) dengan struktur berikut:
+{
+  "identifikasi_deskripsi": "...",
+  "identifikasi_akar_penyebab": "...",
+  "penyebab_risiko": "...",
+  "dampak_risiko": "..."
+}`;
+
+            const userPromptText = `
+Konteks Identifikasi Risiko Rumah Sakit:
+- Nama Risiko: ${contextData?.nama_risiko || userPrompt || 'Risiko Pelayanan Klinis'}
+- Unit Kerja: ${contextData?.unit_kerja || 'Seluruh Unit RS'}
+- Kategori Risiko: ${contextData?.kategori_risiko || 'Risiko Operasional'}
+- Sasaran Strategis: ${contextData?.sasaran || 'Peningkatan Mutu & Keselamatan Pasien'}
+- Jenis Risiko: ${contextData?.jenis_risiko || 'Threat'}
+
+Mohon hasilkan analisis draft 4 bidang tersebut secara simultan, spesifik, akurat, tanpa halusinasi, dan relevan dengan rumah sakit.
+`;
+
+            let jsonText = '';
+            let modelUsed = '';
+
+            if (modelTerpilih === 'gemini' || (geminiKey && !jsonText)) {
+                try {
+                    jsonText = await callGemini(geminiKey, systemPrompt, userPromptText);
+                    modelUsed = 'Google Gemini (Flash)';
+                } catch (e) {
+                    if (openaiKey) {
+                        jsonText = await callOpenAI(openaiKey, systemPrompt, userPromptText);
+                        modelUsed = 'OpenAI (GPT-4o)';
+                    }
+                }
+            } else if (modelTerpilih === 'openai' || (openaiKey && !jsonText)) {
+                try {
+                    jsonText = await callOpenAI(openaiKey, systemPrompt, userPromptText);
+                    modelUsed = 'OpenAI (GPT-4o)';
+                } catch (e) {
+                    if (geminiKey) {
+                        jsonText = await callGemini(geminiKey, systemPrompt, userPromptText);
+                        modelUsed = 'Google Gemini (Flash)';
+                    }
+                }
+            } else if (openrouterKey) {
+                jsonText = await callOpenRouter(openrouterKey, systemPrompt, userPromptText);
+                modelUsed = 'OpenRouter (GPT-4o)';
+            }
+
+            let cleanedJson = jsonText.trim();
+            if (cleanedJson.startsWith('```json')) cleanedJson = cleanedJson.replace(/^```json/, '').replace(/```$/, '').trim();
+            if (cleanedJson.startsWith('```')) cleanedJson = cleanedJson.replace(/^```/, '').replace(/```$/, '').trim();
+
+            let batchResult = null;
+            try {
+                batchResult = JSON.parse(cleanedJson);
+            } catch (err) {
+                console.error('Failed to parse AI JSON batch result:', cleanedJson);
+                batchResult = {
+                    identifikasi_deskripsi: cleanedJson,
+                    identifikasi_akar_penyebab: 'Akar penyebab perlu ditinjau ulang.',
+                    penyebab_risiko: 'Penyebab risiko perlu ditinjau ulang.',
+                    dampak_risiko: 'Dampak risiko perlu ditinjau ulang.'
+                };
+            }
+
+            return NextResponse.json({
+                success: true,
+                batchResult,
+                model_used: modelUsed
+            });
+        }
 
         // 2. Build input-specific instructions to prevent generic/hallucinatory suggestions
         const targetLabel = (label || '').toLowerCase();
