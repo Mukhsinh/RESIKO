@@ -233,7 +233,7 @@ export default function EvaluasiIKTPage() {
                 console.error('Error fetching evaluasi IKT:', error);
                 setData([]);
             } else {
-                setData((rows as IKTEvaluasi[]) ?? []);
+                setData((rows as unknown as IKTEvaluasi[]) ?? []);
             }
         } catch (err) {
             console.error('Error:', err);

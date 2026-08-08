@@ -13,6 +13,7 @@ import {
 import { supabase } from '@/lib/supabase';
 import { useAppSettings } from '@/hooks/useAppSettings';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { useAuth } from '@/context/AuthContext';
 
 interface NavItem {
     label: string;
@@ -158,9 +159,9 @@ export default function Sidebar() {
         return item.children.some(c => isDirectlyActive(c.href) || (c.children && isAnyChildActive(c)));
     };
 
+    const { logout } = useAuth();
     const handleLogout = async () => {
-        await supabase.auth.signOut();
-        window.location.href = '/login';
+        await logout();
     };
 
     const filteredNavItems = navItems.filter(item => {

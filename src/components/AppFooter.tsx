@@ -7,12 +7,19 @@ export default function AppFooter() {
     const [footerText, setFooterText] = useState('');
 
     useEffect(() => {
-        supabase.from('app_settings').select('footer').limit(1).single()
-            .then(({ data }: { data: any }) => {
+        const loadFooter = async () => {
+            try {
+                const { data } = await supabase
+                    .from('app_settings')
+                    .select('footer')
+                    .limit(1)
+                    .maybeSingle();
                 if (data && data.footer) {
                     setFooterText(data.footer);
                 }
-            });
+            } catch { }
+        };
+        loadFooter();
     }, []);
 
     if (!footerText) return null;

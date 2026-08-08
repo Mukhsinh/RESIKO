@@ -1,12 +1,25 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/context/AuthContext';
 import { ShieldAlert, Eye, EyeOff, Loader2, MessageCircle } from 'lucide-react';
 import { useAppSettings } from '@/hooks/useAppSettings';
 
 export default function LoginPage() {
-    const { settings, loading: settingsLoading } = useAppSettings();
+    const router = useRouter();
+    const { isAuthenticated, isLoading } = useAuth();
+
+    // If already logged in, redirect away from login page
+    useEffect(() => {
+        if (!isLoading && isAuthenticated) {
+            const searchParams = new URLSearchParams(window.location.search);
+            const redirectUrl = searchParams.get('redirect') || '/dashboard';
+            router.replace(redirectUrl);
+        }
+    }, [isAuthenticated, isLoading, router]);
+    const { settings, loading: settingsLoading } = useAppSettings(false);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -24,7 +37,10 @@ export default function LoginPage() {
                 : error.message);
             setLoading(false);
         } else {
-            window.location.href = '/dashboard';
+            try { localStorage.removeItem('user_profile_cache'); } catch { }
+            const searchParams = new URLSearchParams(window.location.search);
+            const redirectUrl = searchParams.get('redirect') || '/dashboard';
+            router.replace(redirectUrl);
         }
     };
 

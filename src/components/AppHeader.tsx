@@ -5,14 +5,15 @@ import { LogOut, Bell, Search } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAppSettings } from '@/hooks/useAppSettings';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { useAuth } from '@/context/AuthContext';
 
 export default function AppHeader() {
     const { settings } = useAppSettings();
     const { profile } = useUserProfile();
+    const { logout } = useAuth();
 
     const handleLogout = async () => {
-        await supabase.auth.signOut();
-        window.location.href = '/login';
+        await logout();
     };
 
     return (

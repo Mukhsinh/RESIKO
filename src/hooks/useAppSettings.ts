@@ -21,7 +21,7 @@ export interface AppSettings {
 
 const CACHE_KEY = 'app_branding_settings';
 
-export function useAppSettings() {
+export function useAppSettings(enabled: boolean = true) {
     const [settings, setSettings] = useState<AppSettings>({
         nama_aplikasi: 'ManRisk',
         nama_rs: 'Rumah Sakit',
@@ -50,6 +50,11 @@ export function useAppSettings() {
             }
         }
 
+        if (!enabled) {
+            setLoading(false);
+            return;
+        }
+
         // 2. Fetch fresh data from Supabase
         const fetchSettings = async () => {
             try {
@@ -57,7 +62,7 @@ export function useAppSettings() {
                     .from('app_settings')
                     .select('nama_aplikasi, nama_rs, logo_url, footer, warna_primer, alamat, kota, telepon, email, website, tagline, kepala_rs, nip_kepala')
                     .limit(1)
-                    .single();
+                    .maybeSingle();
 
                 if (data && !error) {
                     const newSettings: AppSettings = {

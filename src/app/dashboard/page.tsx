@@ -71,8 +71,8 @@ export default function DashboardPage() {
         const fetchStats = async () => {
             setLoadingStats(true);
             try {
-                let queryRisiko = supabase.from('manajemen_risiko').select('*, unit_kerja(nama_unit)');
-                let queryStrategi = supabase.from('manajemen_strategi').select('*, unit_kerja(nama_unit)');
+                let queryRisiko = supabase.from('manajemen_risiko').select('*');
+                let queryStrategi = supabase.from('manajemen_strategi').select('*');
 
                 if (selectedYear) {
                     queryRisiko = queryRisiko.eq('tahun', Number(selectedYear));
@@ -91,11 +91,27 @@ export default function DashboardPage() {
                     queryStrategi,
                 ]);
 
-                if (rErr) console.error('Risiko fetch error:', rErr);
-                if (sErr) console.error('Strategi fetch error:', sErr);
+                if (rErr) console.warn('Risiko fetch warning:', rErr.message || rErr.details || rErr);
+                if (sErr) console.warn('Strategi fetch warning:', sErr.message || sErr.details || sErr);
 
-                const rList = (risikoData as any[]) ?? [];
-                const sList = (strategiData as any[]) ?? [];
+                let currentUnits = units;
+                if (currentUnits.length === 0) {
+                    const { data: uData } = await supabase.from('unit_kerja').select('id, nama_unit');
+                    if (uData) currentUnits = uData;
+                }
+                const unitMap = new Map(currentUnits.map(u => [u.id, u.nama_unit]));
+
+                const rawRList = (risikoData as any[]) ?? [];
+                const rawSList = (strategiData as any[]) ?? [];
+
+                const rList = rawRList.map(r => ({
+                    ...r,
+                    unit_kerja: { nama_unit: unitMap.get(r.unit_kerja_id) || '-' }
+                }));
+                const sList = rawSList.map(s => ({
+                    ...s,
+                    unit_kerja: { nama_unit: unitMap.get(s.unit_kerja_id) || '-' }
+                }));
 
                 const totalRisiko = rList.length;
                 const risikoTinggi = rList.filter(r => r.skor_risiko >= 15).length;

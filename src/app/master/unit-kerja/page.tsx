@@ -21,44 +21,16 @@ export default function UnitKerjaPage() {
     const [importing, setImporting] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Debug: Log state changes
-    useEffect(() => {
-        console.log('Data state updated:', data.length, 'items');
-    }, [data]);
-
-    useEffect(() => {
-        console.log('Loading state:', loading);
-    }, [loading]);
-
-    // Check auth state on mount
-    useEffect(() => {
-        const checkAuth = async () => {
-            const { data: { session }, error } = await supabase.auth.getSession();
-            console.log('Auth session:', session ? 'Logged in' : 'Not logged in', error);
-            if (!session) {
-                console.warn('No active session found! User needs to login.');
-                console.warn('Redirecting to login page...');
-                // Uncomment to redirect to login if needed
-                // window.location.href = '/login';
-            } else {
-                console.log('User authenticated:', session.user.email);
-            }
-        };
-        checkAuth();
-    }, []);
-
     const fetchData = async () => {
         setLoading(true);
         try {
-            console.log('Fetching unit_kerja data...');
             const { data: rows, error } = await supabase.from('unit_kerja').select('*').order('nama_unit');
-            
+
             if (error) {
                 console.error('Error fetching unit_kerja:', error);
                 alert('Gagal memuat data: ' + error.message);
                 setData([]);
             } else {
-                console.log('Unit kerja data received:', rows);
                 setData(rows ?? []);
             }
         } catch (err) {
@@ -70,9 +42,8 @@ export default function UnitKerjaPage() {
         }
     };
 
-    useEffect(() => { 
-        console.log('Component mounted, fetching data...');
-        fetchData(); 
+    useEffect(() => {
+        fetchData();
     }, []);
 
     const openAdd = () => { setEditId(null); setNama(''); setShowModal(true); };
@@ -95,25 +66,25 @@ export default function UnitKerjaPage() {
         }
     };
     const handleSave = async (e: React.FormEvent) => {
-        e.preventDefault(); 
+        e.preventDefault();
         setSaving(true);
         try {
             console.log('Saving unit kerja:', { editId, nama });
             let result;
-            if (editId) { 
+            if (editId) {
                 result = await supabase.from('unit_kerja').update({ nama_unit: nama }).eq('id', editId);
-            } else { 
+            } else {
                 result = await supabase.from('unit_kerja').insert({ nama_unit: nama });
             }
-            
+
             console.log('Save result:', result);
-            
+
             if (result.error) {
                 console.error('Error saving unit_kerja:', result.error);
                 alert('Gagal menyimpan: ' + result.error.message);
             } else {
                 console.log('Save successful');
-                setShowModal(false); 
+                setShowModal(false);
                 await fetchData();
             }
         } catch (err) {
@@ -140,14 +111,14 @@ export default function UnitKerjaPage() {
         setImporting(true);
         try {
             const importedData = await importFromExcel<{ nama_unit: string }>(file, excelColumns);
-            
+
             if (importedData.length === 0) {
                 alert('Tidak ada data untuk diimport');
                 return;
             }
 
             const validData = importedData.filter(row => row.nama_unit && row.nama_unit.trim() !== '');
-            
+
             if (validData.length === 0) {
                 alert('Tidak ada data valid untuk diimport');
                 return;
@@ -179,7 +150,7 @@ export default function UnitKerjaPage() {
         <div>
             <PageHeader title="Master Data: Unit Kerja" subtitle="Kelola daftar unit kerja / departemen rumah sakit." />
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                <TopActionBar 
+                <TopActionBar
                     filters={
                         <div className="flex items-center gap-3">
                             <span className="text-sm text-slate-500">{data.length} unit kerja terdaftar</span>
@@ -212,7 +183,7 @@ export default function UnitKerjaPage() {
                                 <span>Tambah Unit</span>
                             </button>
                         </div>
-                    } 
+                    }
                 />
                 <DataTable columns={columns} data={data} onEdit={openEdit} onDelete={handleDelete} isLoading={loading} />
             </div>

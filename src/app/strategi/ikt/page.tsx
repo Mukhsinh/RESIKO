@@ -138,7 +138,7 @@ export default function IKTPage() {
                 console.error('Error fetching IKT:', error);
                 setData([]);
             } else {
-                setData((rows as IKT[]) ?? []);
+                setData((rows as unknown as IKT[]) ?? []);
             }
         } catch (err) {
             console.error('Error:', err);

@@ -36,31 +36,38 @@ export default function PengaturanAIPage() {
     const [saved, setSaved] = useState(false);
 
     useEffect(() => {
-        supabase.from('pengaturan_ai').select('*').limit(1).single().then(({ data, error }: { data: any; error: any }) => {
-            if (data) {
-                const d = data as PengaturanAI;
-                setConfig(d);
-                setModel(d.model_ai_terpilih ?? 'openai');
-                setActive(d.aktif);
-                const extra = d.konfigurasi_tambahan as Record<string, string>;
-                if (extra) {
-                    setOpenaiKey(extra.openai_key || '');
-                    setGeminiKey(extra.gemini_key || '');
-                    setOpenrouterKey(extra.openrouter_key || '');
-                    setSystemPrompt(extra.system_prompt || '');
-                    setJangkarData(extra.jangkar_data || '');
-                    setKunciPintuKeluar(extra.kunci_pintu_keluar || '');
-                    setSpesifikasiOutput(extra.spesifikasi_output || '');
-                    setTemaLokus(extra.tema_lokus || '');
-                    setSumberInformasi(extra.sumber_informasi || '');
-                    setUnitKerja(extra.unit_kerja || '');
-                    setOrganisasi(extra.organisasi || '');
+        const loadConfig = async () => {
+            try {
+                const { data, error } = await supabase.from('pengaturan_ai').select('*').limit(1).maybeSingle();
+                if (data) {
+                    const d = data as PengaturanAI;
+                    setConfig(d);
+                    setModel(d.model_ai_terpilih ?? 'openai');
+                    setActive(d.aktif);
+                    const extra = d.konfigurasi_tambahan as Record<string, string>;
+                    if (extra) {
+                        setOpenaiKey(extra.openai_key || '');
+                        setGeminiKey(extra.gemini_key || '');
+                        setOpenrouterKey(extra.openrouter_key || '');
+                        setSystemPrompt(extra.system_prompt || '');
+                        setJangkarData(extra.jangkar_data || '');
+                        setKunciPintuKeluar(extra.kunci_pintu_keluar || '');
+                        setSpesifikasiOutput(extra.spesifikasi_output || '');
+                        setTemaLokus(extra.tema_lokus || '');
+                        setSumberInformasi(extra.sumber_informasi || '');
+                        setUnitKerja(extra.unit_kerja || '');
+                        setOrganisasi(extra.organisasi || '');
+                    }
+                } else if (error && error.code !== 'PGRST116') {
+                    console.error("Gagal memuat pengaturan:", error);
                 }
-            } else if (error && error.code !== 'PGRST116') {
-                console.error("Gagal memuat pengaturan:", error);
+            } catch (e) {
+                console.error("Error loading AI config:", e);
+            } finally {
+                setLoading(false);
             }
-            setLoading(false);
-        });
+        };
+        loadConfig();
     }, []);
 
     const handleSave = async (e: React.FormEvent) => {

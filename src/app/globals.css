@@ -196,7 +196,7 @@ h6 {
    CARDS
    ========================= */
 .card {
-  background: white;
+  background: transparent;
   border-radius: 16px;
   border: 1px solid #f1f5f9;
   box-shadow: 0 4px 20px rgb(0 0 0 / 0.03);
@@ -204,7 +204,7 @@ h6 {
 }
 
 .score-card {
-  background: white;
+  background: transparent;
   padding: 24px;
   border-radius: 16px;
   border: 1px solid #f1f5f9;
