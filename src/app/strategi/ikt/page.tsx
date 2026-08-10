@@ -7,6 +7,9 @@ import DataTable, { type Column } from '@/components/DataTable';
 import FormInputAI from '@/components/FormInputAI';
 import { Plus, Download, Upload, FileText, Target, TrendingUp, AlertCircle, CheckCircle2, Save, X, Loader2, Trash2 } from 'lucide-react';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { useAppSettings } from '@/hooks/useAppSettings';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -81,6 +84,7 @@ const defaultForm: Form = {
 
 export default function IKTPage() {
     const { profile } = useUserProfile();
+    const { settings } = useAppSettings();
     const [data, setData] = useState<IKT[]>([]);
     const [rktList, setRktList] = useState<{ id: string; program: string; kegiatan: string; rencana_strategis_id?: string; }[]>([]);
     const [units, setUnits] = useState<{ id: string; nama_unit: string }[]>([]);
@@ -383,6 +387,222 @@ export default function IKTPage() {
         }
     };
 
+    const handleExportPDF = () => {
+        const doc = new jsPDF('p', 'pt', 'a4');
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+
+        const hexToRgb = (hex: string): [number, number, number] => {
+            const def: [number, number, number] = [19, 127, 236]; // Blue primary
+            if (!hex) return def;
+            const h = hex.replace('#', '');
+            if (h.length !== 6) return def;
+            const num = parseInt(h, 16);
+            return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
+        };
+
+        const primaryColor = settings?.warna_primer || '#137fec';
+        const rgbColor = hexToRgb(primaryColor);
+
+        const addHeader = (d: jsPDF, title: string) => {
+            d.setDrawColor(226, 232, 240);
+            d.setLineWidth(1);
+            d.line(40, 55, pageWidth - 40, 55);
+
+            d.setTextColor(71, 85, 105);
+            d.setFontSize(8);
+            d.setFont('helvetica', 'bold');
+            d.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), 40, 45);
+
+            d.setTextColor(148, 163, 184);
+            d.setFont('helvetica', 'normal');
+            d.text(title, pageWidth - 40, 45, { align: 'right' });
+        };
+
+        const addFooter = (d: jsPDF) => {
+            const totalPages = d.getNumberOfPages();
+            for (let i = 1; i <= totalPages; i++) {
+                d.setPage(i);
+                if (i === 1) continue; // skip cover
+                d.setTextColor(148, 163, 184);
+                d.setFontSize(8);
+                d.setFont('helvetica', 'normal');
+                d.text(settings?.footer || 'Laporan Internal Rumah Sakit', 40, pageHeight - 30);
+                d.text(`Halaman ${i - 1} dari ${totalPages - 1}`, pageWidth - 40, pageHeight - 30, { align: 'right' });
+                d.setDrawColor(226, 232, 240);
+                d.setLineWidth(0.75);
+                d.line(40, pageHeight - 40, pageWidth - 40, pageHeight - 40);
+            }
+        };
+
+        const drawKopSurat = (d: jsPDF) => {
+            d.setDrawColor(30, 41, 59);
+            d.setLineWidth(1.5);
+            d.line(40, 110, pageWidth - 40, 110);
+            d.setLineWidth(0.5);
+            d.line(40, 114, pageWidth - 40, 114);
+
+            d.setTextColor(30, 41, 59);
+            d.setFont('helvetica', 'bold');
+            d.setFontSize(14);
+            d.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), 40, 50);
+
+            d.setFont('helvetica', 'normal');
+            d.setFontSize(9);
+            d.setTextColor(71, 85, 105);
+            d.text(settings?.alamat || '', 40, 68);
+            d.text(`Kota: ${settings?.kota || '-'} | Telp: ${settings?.telepon || '-'} | Email: ${settings?.email || '-'} | Web: ${settings?.website || '-'}`, 40, 84);
+
+            if (settings?.tagline) {
+                d.setFont('helvetica', 'oblique');
+                d.setFontSize(8);
+                d.text(`"${settings.tagline}"`, 40, 98);
+            }
+        };
+
+        // Cover Page
+        doc.setFillColor(rgbColor[0], rgbColor[1], rgbColor[2]);
+        doc.rect(0, 0, pageWidth, pageHeight, 'F');
+        doc.setTextColor(255, 255, 255);
+
+        doc.setFontSize(22);
+        doc.setFont('helvetica', 'bold');
+        doc.text('LAPORAN INDIKATOR KINERJA TAHUNAN (IKT)', pageWidth / 2, pageHeight / 2 - 60, { align: 'center' });
+
+        doc.setFontSize(16);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Tahun Target: ${year || 'Semua'}`, pageWidth / 2, pageHeight / 2, { align: 'center' });
+
+        doc.setFontSize(12);
+        doc.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), pageWidth / 2, pageHeight / 2 + 50, { align: 'center' });
+
+        doc.addPage();
+
+        // TOC Page
+        let tocPageNum = doc.getCurrentPageInfo().pageNumber;
+        doc.addPage(); // skip for TOC
+
+        let contentPageStart = doc.getCurrentPageInfo().pageNumber;
+
+        // Draw KOP Surat on first content page
+        drawKopSurat(doc);
+
+        doc.setTextColor(30, 41, 59);
+        doc.setFontSize(13);
+        doc.setFont('helvetica', 'bold');
+        doc.text('A. Indikator Kinerja Tahunan per Unit Kerja', 40, 140);
+
+        let finalY = 160;
+
+        const byUnit = Object.entries(
+            filtered.reduce<Record<string, IKT[]>>((acc, d) => {
+                const unit = d.unit_kerja?.nama_unit ?? 'Lainnya';
+                if (!acc[unit]) acc[unit] = [];
+                acc[unit].push(d);
+                return acc;
+            }, {})
+        );
+
+        byUnit.forEach(([unit, items]) => {
+            if (finalY > pageHeight - 120) {
+                doc.addPage();
+                finalY = 70;
+            }
+
+            doc.setFontSize(10.5);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(30, 41, 59);
+            doc.text(`Unit Kerja: ${unit}`, 40, finalY + 15);
+
+            let rowIdx = 1;
+            const tableData = items.map(item => {
+                const baseline = item.baseline_nilai != null ? `${item.baseline_nilai} ${item.satuan ?? ''}`.trim() : '-';
+                const targetVal = item.target_nilai != null ? `${item.target_nilai} ${item.satuan ?? ''}`.trim() : '-';
+                return [
+                    rowIdx++,
+                    String(item.target_tahun || year || '-'),
+                    item.indikator || '-',
+                    baseline,
+                    targetVal,
+                    item.pic || '-'
+                ];
+            });
+
+            autoTable(doc, {
+                startY: finalY + 22,
+                head: [['No', 'Tahun', 'Indikator Kinerja Tahunan', 'Baseline', 'Target', 'PIC']],
+                body: tableData,
+                theme: 'grid',
+                headStyles: { fillColor: rgbColor, fontSize: 8, fontStyle: 'bold' },
+                styles: { fontSize: 8, cellPadding: 4 },
+                columnStyles: {
+                    0: { cellWidth: 25, halign: 'center' },
+                    1: { cellWidth: 40, halign: 'center' },
+                    2: { cellWidth: 230 },
+                    3: { cellWidth: 80, halign: 'center' },
+                    4: { cellWidth: 80, halign: 'center' },
+                    5: { cellWidth: 60, halign: 'center' },
+                },
+                margin: { left: 40, right: 40 },
+                didDrawPage: (data) => {
+                    const currentPage = doc.getCurrentPageInfo().pageNumber;
+                    if (currentPage > contentPageStart) {
+                        addHeader(doc, 'Laporan Indikator Kinerja Tahunan');
+                    }
+                }
+            });
+            finalY = (doc as any).lastAutoTable.finalY + 20;
+        });
+
+        // Signature block
+        if (finalY > pageHeight - 150) {
+            doc.addPage();
+            finalY = 70;
+        } else {
+            finalY += 15;
+        }
+
+        doc.setFontSize(9.5);
+        doc.setTextColor(51, 65, 85);
+        doc.setFont('helvetica', 'normal');
+        doc.text('Disiapkan oleh,', 60, finalY);
+        doc.text('Staf Perencana / Mutu', 60, finalY + 14);
+        doc.line(60, finalY + 65, 200, finalY + 65);
+        doc.text('Pengelola Program', 60, finalY + 78);
+
+        doc.text('Disetujui oleh,', pageWidth - 200, finalY);
+        doc.setFont('helvetica', 'bold');
+        doc.text(settings?.kepala_rs || 'Pimpinan Rumah Sakit', pageWidth - 200, finalY + 14);
+        doc.line(pageWidth - 200, finalY + 65, pageWidth - 60, finalY + 65);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`NIP: ${settings?.nip_kepala || '-'}`, pageWidth - 200, finalY + 78);
+
+        // Add TOC Content
+        doc.setPage(tocPageNum);
+        addHeader(doc, 'Daftar Isi');
+        doc.setTextColor(30, 41, 59);
+        doc.setFontSize(15);
+        doc.setFont('helvetica', 'bold');
+        doc.text('DAFTAR ISI LAPORAN', 40, 100);
+
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(1);
+        doc.line(40, 112, pageWidth - 40, 112);
+
+        doc.setFontSize(10.5);
+        doc.setFont('helvetica', 'normal');
+
+        doc.text('1. Detail Indikator Kinerja Tahunan per Unit Kerja', 40, 140);
+        doc.text(`${contentPageStart - 1}`, pageWidth - 40, 140, { align: 'right' });
+
+        doc.text('2. Lembar Tanda Tangan Pengesahan Laporan', 40, 160);
+        const lastPage = doc.getNumberOfPages();
+        doc.text(`${lastPage - 1}`, pageWidth - 40, 160, { align: 'right' });
+
+        addFooter(doc);
+        doc.save(`Laporan_IKT_${year || 'Semua'}.pdf`);
+    };
+
     const columns: Column<IKT>[] = [
         { key: 'target_tahun', label: 'Tahun', className: 'w-16 text-center' },
         { key: 'unit_kerja_id', label: 'Unit', render: r => r.unit_kerja?.nama_unit ?? '-' },
@@ -459,9 +679,9 @@ export default function IKTPage() {
                             <Upload size={15} />
                             <span className="hidden sm:inline">Import</span>
                         </button>
-                        <button className="btn-secondary">
+                        <button className="btn-secondary" onClick={handleExportPDF}>
                             <FileText size={15} />
-                            <span className="hidden sm:inline">Export</span>
+                            <span className="hidden sm:inline">Laporan</span>
                         </button>
                         <button className="btn-primary" onClick={openAdd}>
                             <Plus size={15} />

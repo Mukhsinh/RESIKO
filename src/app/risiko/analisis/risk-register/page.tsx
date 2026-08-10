@@ -2,6 +2,9 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useAppSettings } from '@/hooks/useAppSettings';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { PageHeader, FilterBar, TopActionBar } from '@/components/SharedUI';
 import DataTable, { type Column } from '@/components/DataTable';
 import { Download, FileText, Filter, Eye, X, Loader2 } from 'lucide-react';
@@ -132,117 +135,211 @@ export default function RiskRegisterPage() {
         return matchSearch && matchUnit;
     });
 
+    const { settings } = useAppSettings();
+
     const handleUnduhLaporan = async () => {
         setDownloading(true);
         try {
-            const { data: settings } = await supabase.from('app_settings').select('*').limit(1).single();
-            const namaRs = settings?.nama_rs ?? 'Rumah Sakit';
-            const alamat = settings?.alamat ?? '';
-            const kota = settings?.kota ?? '';
-            const telepon = settings?.telepon ?? '';
-            const email = settings?.email ?? '';
-            const website = settings?.website ?? '';
-            const kepala = settings?.kepala_rs ?? '';
-            const nip = settings?.nip_kepala ?? '';
-            const footerText = settings?.footer ?? '';
-            const tgl = new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
+            const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const pageHeight = doc.internal.pageSize.getHeight();
 
-            const rows_html = filtered.map((r, i) => {
+            const hexToRgb = (hex: string): [number, number, number] => {
+                const h = hex.replace('#', '');
+                if (h.length !== 6) return [19, 127, 236];
+                const num = parseInt(h, 16);
+                return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
+            };
+
+            const primaryColor = settings?.warna_primer || '#137fec';
+            const rgbColor = hexToRgb(primaryColor);
+
+            const addHeader = (d: jsPDF, title: string) => {
+                d.setDrawColor(226, 232, 240);
+                d.setLineWidth(1);
+                d.line(40, 40, pageWidth - 40, 40);
+
+                d.setTextColor(71, 85, 105);
+                d.setFontSize(8);
+                d.setFont('helvetica', 'bold');
+                d.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), 40, 32);
+
+                d.setTextColor(148, 163, 184);
+                d.setFont('helvetica', 'normal');
+                d.text(title, pageWidth - 40, 32, { align: 'right' });
+            };
+
+            const addFooter = (d: jsPDF) => {
+                const totalPages = d.getNumberOfPages();
+                for (let i = 1; i <= totalPages; i++) {
+                    d.setPage(i);
+                    if (i === 1) continue;
+                    d.setTextColor(148, 163, 184);
+                    d.setFontSize(8);
+                    d.setFont('helvetica', 'normal');
+                    d.text(settings?.footer || 'Laporan Internal Rumah Sakit', 40, pageHeight - 25);
+                    d.text(`Halaman ${i - 1} dari ${totalPages - 1}`, pageWidth - 40, pageHeight - 25, { align: 'right' });
+                    d.setDrawColor(226, 232, 240);
+                    d.setLineWidth(0.75);
+                    d.line(40, pageHeight - 35, pageWidth - 40, pageHeight - 35);
+                }
+            };
+
+            const drawKopSurat = (d: jsPDF) => {
+                d.setDrawColor(30, 41, 59);
+                d.setLineWidth(1.5);
+                d.line(40, 95, pageWidth - 40, 95);
+                d.setLineWidth(0.5);
+                d.line(40, 98, pageWidth - 40, 98);
+
+                d.setTextColor(30, 41, 59);
+                d.setFont('helvetica', 'bold');
+                d.setFontSize(14);
+                d.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), 40, 45);
+
+                d.setFont('helvetica', 'normal');
+                d.setFontSize(9);
+                d.setTextColor(71, 85, 105);
+                d.text(settings?.alamat || '', 40, 60);
+                d.text(`Kota: ${settings?.kota || '-'} | Telp: ${settings?.telepon || '-'} | Email: ${settings?.email || '-'} | Web: ${settings?.website || '-'}`, 40, 74);
+
+                if (settings?.tagline) {
+                    d.setFont('helvetica', 'oblique');
+                    d.setFontSize(8);
+                    d.text(`"${settings.tagline}"`, 40, 86);
+                }
+            };
+
+            // Cover Page
+            doc.setFillColor(rgbColor[0], rgbColor[1], rgbColor[2]);
+            doc.rect(0, 0, pageWidth, pageHeight, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(24);
+            doc.setFont('helvetica', 'bold');
+            doc.text('LAPORAN RISK REGISTER', pageWidth / 2, pageHeight / 2 - 40, { align: 'center' });
+            doc.setFontSize(16);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`Tahun: ${year || 'Semua'}`, pageWidth / 2, pageHeight / 2 + 10, { align: 'center' });
+            doc.setFontSize(12);
+            doc.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), pageWidth / 2, pageHeight / 2 + 60, { align: 'center' });
+
+            doc.addPage();
+            let tocPageNum = doc.getCurrentPageInfo().pageNumber;
+            doc.addPage();
+            let contentPageStart = doc.getCurrentPageInfo().pageNumber;
+
+            drawKopSurat(doc);
+
+            doc.setTextColor(30, 41, 59);
+            doc.setFontSize(13);
+            doc.setFont('helvetica', 'bold');
+            doc.text('A. Daftar Risiko Terintegrasi (Risk Register)', 40, 120);
+
+            let finalY = 135;
+            let rowIdx = 1;
+
+            const tableData = filtered.map(r => {
                 const skor = r.skor_risiko ?? (r.probabilitas ?? 0) * (r.dampak ?? 0);
                 const p_res = r.p_residual ?? Math.ceil((r.probabilitas ?? 0) * 0.5);
                 const d_res = r.d_residual ?? Math.ceil((r.dampak ?? 0) * 0.8);
                 const skor_res = p_res * d_res;
-                const unit_name = (r as any).unit_kerja?.nama_unit ?? '-';
-                const skorColor = skor >= 15 ? '#dc2626' : skor >= 10 ? '#ea580c' : skor >= 5 ? '#d97706' : '#16a34a';
-                const skor_res_color = skor_res >= 10 ? '#ea580c' : skor_res >= 5 ? '#d97706' : '#16a34a';
-                const STATUS_COLOR: Record<string, string> = {
-                    Open: '#dc2626', Monitoring: '#d97706', 'Mitigasi Berjalan': '#2563eb', Closed: '#16a34a'
-                };
-                return `<tr>
-                    <td style="text-align:center">${i + 1}</td>
-                    <td>${r.tahun}</td>
-                    <td>${unit_name}</td>
-                    <td style="font-family:monospace">${r.kode_risiko ?? '-'}</td>
-                    <td>${r.identifikasi_risiko}</td>
-                    <td style="text-align:center">${r.probabilitas ?? '-'}</td>
-                    <td style="text-align:center">${r.dampak ?? '-'}</td>
-                    <td style="text-align:center;color:${skorColor};font-weight:bold">${skor}</td>
-                    <td style="text-align:center">${p_res}</td>
-                    <td style="text-align:center">${d_res}</td>
-                    <td style="text-align:center;color:${skor_res_color};font-weight:bold">${skor_res}</td>
-                    <td style="text-align:center">${r.mitigasi ?? '-'}</td>
-                    <td style="text-align:center;color:${STATUS_COLOR[r.status] ?? '#64748b'};font-weight:600">${r.status}</td>
-                </tr>`;
-            }).join('');
+                const unit_name = r.unit_kerja?.nama_unit ?? '-';
 
-            const html = `<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8">
-            <title>Risk Register - ${namaRs}</title>
-            <style>
-              @page { size: A4 landscape; margin: 15mm; }
-              * { box-sizing: border-box; }
-              body { font-family: Arial, Helvetica, sans-serif; font-size: 10px; margin: 0; color: #1e293b; }
-              .kop { display: flex; align-items: center; gap: 16px; padding-bottom: 12px; border-bottom: 4px double #1e3a5f; margin-bottom: 16px; }
-              .kop-logo { width: 72px; height: 72px; background: #1e3a5f; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 28px; font-weight: bold; flex-shrink: 0; }
-              .kop-text .label { font-size: 8px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; }
-              .kop-text .rs-name { font-size: 18px; font-weight: 900; color: #1e3a5f; margin: 2px 0; }
-              .kop-text .rs-info { font-size: 9px; color: #475569; }
-              h3 { text-align: center; font-size: 14px; margin: 16px 0 4px; color: #1e3a5f; text-transform: uppercase; letter-spacing: 1px; }
-              .sub { text-align: center; font-size: 9px; color: #64748b; margin-bottom: 16px; }
-              table { width: 100%; border-collapse: collapse; font-size: 9px; }
-              thead th { background: #1e3a5f; color: white; padding: 6px 8px; text-align: left; font-size: 9px; }
-              tbody td { padding: 5px 7px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
-              tbody tr:nth-child(even) td { background: #f8fafc; }
-              tbody tr:hover td { background: #eff6ff; }
-              .footer { margin-top: 30px; padding-top: 10px; border-top: 1px solid #cbd5e1; display: flex; justify-content: space-between; align-items: flex-end; }
-              .footer-left { font-size: 8px; color: #94a3b8; max-width: 60%; }
-              .ttd { text-align: center; font-size: 9px; }
-              .ttd-name { border-top: 1px solid #334155; padding-top: 4px; margin-top: 50px; font-weight: bold; }
-            </style></head><body>
-            <div class="kop">
-              <div class="kop-logo">${namaRs.charAt(0) || 'R'}</div>
-              <div class="kop-text">
-                <p class="label">Sistem Manajemen Risiko</p>
-                <p class="rs-name">${namaRs}</p>
-                <p class="rs-info">${alamat}${kota ? ', ' + kota : ''}</p>
-                <p class="rs-info">${[telepon, email, website].filter(Boolean).join(' | ')}</p>
-              </div>
-            </div>
-            <h3>LAPORAN RISK REGISTER</h3>
-            <p class="sub">Tahun: ${year} &nbsp;|&nbsp; Dicetak: ${tgl} &nbsp;|&nbsp; Total ${filtered.length} Data</p>
-            <table>
-              <thead><tr>
-                <th style="width:28px">No</th><th>Tahun</th><th>Unit Kerja / Pemilik Risiko</th>
-                <th>Kode</th><th style="min-width:160px">Pernyataan Risiko</th>
-                <th style="text-align:center">P Inh</th><th style="text-align:center">D Inh</th>
-                <th style="text-align:center">Inherent</th>
-                <th style="text-align:center">P Res</th><th style="text-align:center">D Res</th>
-                <th style="text-align:center">Residual</th>
-                <th style="min-width:120px">Rencana Mitigasi</th><th>Status</th>
-              </tr></thead>
-              <tbody>${rows_html}</tbody>
-            </table>
-            <div class="footer">
-              <div class="footer-left">${footerText}</div>
-              <div class="ttd">
-                <p>${kota}, ${tgl}</p>
-                <div class="ttd-name">${kepala}</div>
-                ${nip ? `<p>NIP. ${nip}</p>` : ''}
-              </div>
-            </div>
-            </body></html>`;
+                return [
+                    rowIdx++,
+                    r.tahun,
+                    unit_name,
+                    r.kode_risiko ?? '-',
+                    r.identifikasi_risiko,
+                    `Skor: ${skor} (P:${r.probabilitas ?? '-'} D:${r.dampak ?? '-'})`,
+                    `Skor: ${skor_res} (P:${p_res} D:${d_res})`,
+                    r.mitigasi || r.rencana_penanganan || '-',
+                    r.status ?? 'Open'
+                ];
+            });
 
-            const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `Risk_Register_${namaRs.replace(/\s+/g, '_')}_${year}.html`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
+            autoTable(doc, {
+                startY: finalY,
+                head: [['No', 'Tahun', 'Unit Kerja', 'Kode', 'Pernyataan Risiko', 'Inherent Risk', 'Residual Risk', 'Rencana Mitigasi', 'Status']],
+                body: tableData,
+                theme: 'grid',
+                headStyles: { fillColor: rgbColor, fontSize: 8, fontStyle: 'bold' },
+                styles: { fontSize: 8, cellPadding: 4 },
+                columnStyles: {
+                    0: { cellWidth: 25, halign: 'center' },
+                    1: { cellWidth: 35, halign: 'center' },
+                    2: { cellWidth: 90 },
+                    3: { cellWidth: 50 },
+                    4: { cellWidth: 150 },
+                    5: { cellWidth: 80 },
+                    6: { cellWidth: 80 },
+                    7: { cellWidth: 170 },
+                    8: { cellWidth: 50, halign: 'center' }
+                },
+                margin: { left: 40, right: 40 },
+                didDrawPage: () => {
+                    const currentPage = doc.getCurrentPageInfo().pageNumber;
+                    if (currentPage > contentPageStart) {
+                        addHeader(doc, 'Laporan Risk Register');
+                    }
+                }
+            });
+
+            finalY = (doc as any).lastAutoTable.finalY + 20;
+
+            // TOC
+            doc.setPage(tocPageNum);
+            addHeader(doc, 'Daftar Isi');
+            doc.setTextColor(30, 41, 59);
+            doc.setFontSize(15);
+            doc.setFont('helvetica', 'bold');
+            doc.text('DAFTAR ISI LAPORAN', 40, 80);
+
+            doc.setDrawColor(226, 232, 240);
+            doc.setLineWidth(1);
+            doc.line(40, 92, pageWidth - 40, 92);
+
+            doc.setFontSize(10.5);
+            doc.setFont('helvetica', 'normal');
+            doc.text('1. Daftar Risiko Terintegrasi (Risk Register)', 40, 120);
+            doc.text(`${contentPageStart - 1}`, pageWidth - 40, 120, { align: 'right' });
+
+            doc.text('2. Lembar Tanda Tangan Pengesahan Laporan', 40, 140);
+            const lastPage = doc.getNumberOfPages();
+            doc.text(`${lastPage - 1}`, pageWidth - 40, 140, { align: 'right' });
+
+            // Signature block on last page
+            doc.setPage(lastPage);
+            if (finalY > pageHeight - 130) {
+                doc.addPage();
+                finalY = 60;
+            } else {
+                finalY += 15;
+            }
+
+            const tgl = new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
+            const kota = settings?.kota || 'Kota';
+
+            doc.setFontSize(9.5);
+            doc.setTextColor(51, 65, 85);
+            doc.setFont('helvetica', 'normal');
+            doc.text('Disiapkan oleh,', 60, finalY);
+            doc.text('Pengelola Manajemen Risiko', 60, finalY + 14);
+            doc.line(60, finalY + 60, 220, finalY + 60);
+
+            doc.text(`${kota}, ${tgl}`, pageWidth - 220, finalY);
+            doc.text('Disetujui oleh,', pageWidth - 220, finalY + 14);
+            doc.setFont('helvetica', 'bold');
+            doc.text(settings?.kepala_rs || 'Pimpinan Rumah Sakit', pageWidth - 220, finalY + 28);
+            doc.line(pageWidth - 220, finalY + 60, pageWidth - 60, finalY + 60);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`NIP: ${settings?.nip_kepala || '-'}`, pageWidth - 220, finalY + 72);
+
+            addFooter(doc);
+            doc.save(`Laporan_Risk_Register_${year || 'Semua'}.pdf`);
         } catch (e) {
             console.error(e);
-            alert('Gagal mengunduh laporan');
+            alert('Gagal mengunduh laporan PDF');
         } finally {
             setDownloading(false);
         }

@@ -2,11 +2,14 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useAppSettings } from '@/hooks/useAppSettings';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { PageHeader, ScoreCard, FilterBar, TopActionBar } from '@/components/SharedUI';
 import DataTable, { type Column } from '@/components/DataTable';
 import {
     FileText, AlertTriangle, ShieldAlert, CheckCircle2,
-    Eye, Trash2, X, Save, Loader2, Settings, Bell, BellOff
+    Eye, Trash2, X, Save, Loader2, Settings, Bell, BellOff, Download
 } from 'lucide-react';
 
 /* ─── Types ─── */
@@ -215,16 +218,224 @@ function ViewModal({ row, onClose }: { row: EWSAlert; onClose: () => void }) {
 
 /* ─── Main Page ─── */
 export default function EarlyWarningSystemPage() {
+    const { settings } = useAppSettings();
     const [rows, setRows] = useState<EWSAlert[]>([]);
     const [kriList, setKriList] = useState<KRIItem[]>([]);
     const [units, setUnits] = useState<WorkUnit[]>([]);
     const [loading, setLoading] = useState(true);
+    const [downloading, setDownloading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [search, setSearch] = useState('');
     const [year, setYear] = useState(String(new Date().getFullYear()));
     const [unitFilter, setUnitFilter] = useState('');
     const [showThresholdModal, setShowThresholdModal] = useState(false);
     const [viewRow, setViewRow] = useState<EWSAlert | null>(null);
+
+    const handleExportPDF = async () => {
+        setDownloading(true);
+        try {
+            const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const pageHeight = doc.internal.pageSize.getHeight();
+
+            const hexToRgb = (hex: string): [number, number, number] => {
+                const h = hex.replace('#', '');
+                if (h.length !== 6) return [19, 127, 236];
+                const num = parseInt(h, 16);
+                return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
+            };
+
+            const primaryColor = settings?.warna_primer || '#137fec';
+            const rgbColor = hexToRgb(primaryColor);
+
+            const addHeader = (d: jsPDF, title: string) => {
+                d.setDrawColor(226, 232, 240);
+                d.setLineWidth(1);
+                d.line(40, 55, pageWidth - 40, 55);
+
+                d.setTextColor(71, 85, 105);
+                d.setFontSize(8);
+                d.setFont('helvetica', 'bold');
+                d.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), 40, 45);
+
+                d.setTextColor(148, 163, 184);
+                d.setFont('helvetica', 'normal');
+                d.text(title, pageWidth - 40, 45, { align: 'right' });
+            };
+
+            const addFooter = (d: jsPDF) => {
+                const totalPages = d.getNumberOfPages();
+                for (let i = 1; i <= totalPages; i++) {
+                    d.setPage(i);
+                    if (i === 1) continue;
+                    d.setTextColor(148, 163, 184);
+                    d.setFontSize(8);
+                    d.setFont('helvetica', 'normal');
+                    d.text(settings?.footer || 'Laporan Internal Rumah Sakit', 40, pageHeight - 30);
+                    d.text(`Halaman ${i - 1} dari ${totalPages - 1}`, pageWidth - 40, pageHeight - 30, { align: 'right' });
+                    d.setDrawColor(226, 232, 240);
+                    d.setLineWidth(0.75);
+                    d.line(40, pageHeight - 40, pageWidth - 40, pageHeight - 40);
+                }
+            };
+
+            const drawKopSurat = (d: jsPDF) => {
+                d.setDrawColor(30, 41, 59);
+                d.setLineWidth(1.5);
+                d.line(40, 110, pageWidth - 40, 110);
+                d.setLineWidth(0.5);
+                d.line(40, 114, pageWidth - 40, 114);
+
+                d.setTextColor(30, 41, 59);
+                d.setFont('helvetica', 'bold');
+                d.setFontSize(14);
+                d.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), 40, 50);
+
+                d.setFont('helvetica', 'normal');
+                d.setFontSize(9);
+                d.setTextColor(71, 85, 105);
+                d.text(settings?.alamat || '', 40, 68);
+                d.text(`Kota: ${settings?.kota || '-'} | Telp: ${settings?.telepon || '-'} | Email: ${settings?.email || '-'} | Web: ${settings?.website || '-'}`, 40, 84);
+
+                if (settings?.tagline) {
+                    d.setFont('helvetica', 'oblique');
+                    d.setFontSize(8);
+                    d.text(`"${settings.tagline}"`, 40, 98);
+                }
+            };
+
+            // Cover Page
+            doc.setFillColor(rgbColor[0], rgbColor[1], rgbColor[2]);
+            doc.rect(0, 0, pageWidth, pageHeight, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(22);
+            doc.setFont('helvetica', 'bold');
+            doc.text('LAPORAN EARLY WARNING SYSTEM', pageWidth / 2, pageHeight / 2 - 60, { align: 'center' });
+            doc.setFontSize(16);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`Tahun: ${year || 'Semua'}`, pageWidth / 2, pageHeight / 2, { align: 'center' });
+            doc.setFontSize(12);
+            doc.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), pageWidth / 2, pageHeight / 2 + 50, { align: 'center' });
+
+            doc.addPage();
+            let tocPageNum = doc.getCurrentPageInfo().pageNumber;
+            doc.addPage();
+            let contentPageStart = doc.getCurrentPageInfo().pageNumber;
+
+            drawKopSurat(doc);
+
+            doc.setTextColor(30, 41, 59);
+            doc.setFontSize(13);
+            doc.setFont('helvetica', 'bold');
+            doc.text('A. Daftar Threshold & Indikator Early Warning System', 40, 140);
+
+            let finalY = 160;
+            let rowIdx = 1;
+
+            const tableData = filtered.map(r => {
+                const unit_name = r.unit_kerja?.nama_unit ?? 'Semua Unit';
+                const aktual = r.nilai_aktual !== undefined ? `${r.nilai_aktual} ${r.satuan ?? ''}` : '-';
+                const batas = `${r.nilai_batas} ${r.satuan ?? ''}`;
+                const statusMonitor = r.is_active ? 'Aktif' : 'Non-aktif';
+                const statusBreached = r.is_breached ? 'MELEBIHI AMBANG' : 'NORMAL';
+
+                return [
+                    rowIdx++,
+                    unit_name,
+                    r.nama_threshold,
+                    r.parameter,
+                    batas,
+                    aktual,
+                    r.level,
+                    `${statusMonitor} (${statusBreached})`
+                ];
+            });
+
+            autoTable(doc, {
+                startY: finalY,
+                head: [['No', 'Unit', 'Nama Threshold', 'Parameter', 'Batas', 'Aktual', 'Level', 'Status']],
+                body: tableData,
+                theme: 'grid',
+                headStyles: { fillColor: rgbColor, fontSize: 8, fontStyle: 'bold' },
+                styles: { fontSize: 8, cellPadding: 4 },
+                columnStyles: {
+                    0: { cellWidth: 20, halign: 'center' },
+                    1: { cellWidth: 70 },
+                    2: { cellWidth: 90 },
+                    3: { cellWidth: 100 },
+                    4: { cellWidth: 50, halign: 'center' },
+                    5: { cellWidth: 50, halign: 'center' },
+                    6: { cellWidth: 50, halign: 'center' },
+                    7: { cellWidth: 85, halign: 'center' }
+                },
+                margin: { left: 40, right: 40 },
+                didDrawPage: () => {
+                    const currentPage = doc.getCurrentPageInfo().pageNumber;
+                    if (currentPage > contentPageStart) {
+                        addHeader(doc, 'Laporan Early Warning System');
+                    }
+                }
+            });
+
+            finalY = (doc as any).lastAutoTable.finalY + 20;
+
+            // TOC
+            doc.setPage(tocPageNum);
+            addHeader(doc, 'Daftar Isi');
+            doc.setTextColor(30, 41, 59);
+            doc.setFontSize(15);
+            doc.setFont('helvetica', 'bold');
+            doc.text('DAFTAR ISI LAPORAN', 40, 100);
+
+            doc.setDrawColor(226, 232, 240);
+            doc.setLineWidth(1);
+            doc.line(40, 112, pageWidth - 40, 112);
+
+            doc.setFontSize(10.5);
+            doc.setFont('helvetica', 'normal');
+            doc.text('1. Threshold & Indikator Early Warning System', 40, 140);
+            doc.text(`${contentPageStart - 1}`, pageWidth - 40, 140, { align: 'right' });
+
+            doc.text('2. Lembar Tanda Tangan Pengesahan Laporan', 40, 160);
+            const lastPage = doc.getNumberOfPages();
+            doc.text(`${lastPage - 1}`, pageWidth - 40, 160, { align: 'right' });
+
+            // Signature block on last page
+            doc.setPage(lastPage);
+            if (finalY > pageHeight - 150) {
+                doc.addPage();
+                finalY = 70;
+            } else {
+                finalY += 15;
+            }
+
+            const tgl = new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
+            const kota = settings?.kota || 'Kota';
+
+            doc.setFontSize(9.5);
+            doc.setTextColor(51, 65, 85);
+            doc.setFont('helvetica', 'normal');
+            doc.text('Disiapkan oleh,', 60, finalY);
+            doc.text('Pengelola Manajemen Risiko', 60, finalY + 14);
+            doc.line(60, finalY + 65, 200, finalY + 65);
+
+            doc.text(`${kota}, ${tgl}`, pageWidth - 200, finalY);
+            doc.text('Disetujui oleh,', pageWidth - 200, finalY + 14);
+            doc.setFont('helvetica', 'bold');
+            doc.text(settings?.kepala_rs || 'Pimpinan Rumah Sakit', pageWidth - 200, finalY + 28);
+            doc.line(pageWidth - 200, finalY + 65, pageWidth - 60, finalY + 65);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`NIP: ${settings?.nip_kepala || '-'}`, pageWidth - 200, finalY + 78);
+
+            addFooter(doc);
+            doc.save(`Laporan_Early_Warning_${year || 'Semua'}.pdf`);
+        } catch (e) {
+            console.error(e);
+            alert('Gagal mengunduh laporan PDF');
+        } finally {
+            setDownloading(false);
+        }
+    };
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -411,7 +622,10 @@ export default function EarlyWarningSystemPage() {
                     }
                     actions={
                         <>
-                            <button className="btn-secondary" onClick={() => alert('Mengunduh log EWS...')}><FileText size={15} /><span className="hidden sm:inline">Export Logs</span></button>
+                            <button className="btn-secondary" onClick={handleExportPDF} disabled={downloading}>
+                                {downloading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+                                <span className="hidden sm:inline">Laporan</span>
+                            </button>
                             <button className="btn-primary" onClick={() => setShowThresholdModal(true)}><Settings size={15} /><span>Set Threshold</span></button>
                         </>
                     }

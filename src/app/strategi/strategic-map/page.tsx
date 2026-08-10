@@ -1,8 +1,10 @@
 'use client';
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Download, Filter, Activity, Users, TrendingUp, BrainCircuit, Loader2, Building2, RotateCw } from 'lucide-react';
-import html2canvas from 'html2canvas';
+import { Filter, Activity, Users, TrendingUp, BrainCircuit, Loader2, Building2, RotateCw, FileText } from 'lucide-react';
+import html2canvas from 'html2canvas-pro';
 import { supabase } from '@/lib/supabase';
+import { useAppSettings } from '@/hooks/useAppSettings';
+import jsPDF from 'jspdf';
 
 interface StrategicObjective {
     id: string;
@@ -28,6 +30,7 @@ const PERSPECTIVE_META = {
 };
 
 export default function StrategicMapPage() {
+    const { settings } = useAppSettings();
     const [selectedYear, setSelectedYear] = useState(String(new Date().getFullYear()));
     const [selectedUnit, setSelectedUnit] = useState('ALL');
     const [units, setUnits] = useState<{ id: string; nama_unit: string }[]>([]);
@@ -98,15 +101,236 @@ export default function StrategicMapPage() {
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
-    const handleDownload = async () => {
+
+    const handleDownloadPDF = async () => {
         if (!chartRef.current) return;
         try {
+            setLoading(true);
             const canvas = await html2canvas(chartRef.current, { backgroundColor: '#f8fafc', scale: 2 });
             const image = canvas.toDataURL('image/png', 1.0);
-            const link = document.createElement('a');
-            link.download = `strategic-map-${selectedUnit === 'ALL' ? 'Semua-Unit' : selectedUnit}-${selectedYear}.png`;
-            link.href = image; link.click();
-        } catch (err) { console.error('Failed to download chart', err); }
+
+            const doc = new jsPDF('p', 'pt', 'a4');
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const pageHeight = doc.internal.pageSize.getHeight();
+
+            const hexToRgb = (hex: string): [number, number, number] => {
+                const def: [number, number, number] = [19, 127, 236]; // Blue primary
+                if (!hex) return def;
+                const h = hex.replace('#', '');
+                if (h.length !== 6) return def;
+                const num = parseInt(h, 16);
+                return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
+            };
+
+            const primaryColor = settings?.warna_primer || '#137fec';
+            const rgbColor = hexToRgb(primaryColor);
+
+            const addHeader = (d: jsPDF, title: string) => {
+                d.setDrawColor(226, 232, 240);
+                d.setLineWidth(1);
+                d.line(40, 55, pageWidth - 40, 55);
+
+                d.setTextColor(71, 85, 105);
+                d.setFontSize(8);
+                d.setFont('helvetica', 'bold');
+                d.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), 40, 45);
+
+                d.setTextColor(148, 163, 184);
+                d.setFont('helvetica', 'normal');
+                d.text(title, pageWidth - 40, 45, { align: 'right' });
+            };
+
+            const addFooter = (d: jsPDF) => {
+                const totalPages = d.getNumberOfPages();
+                for (let i = 1; i <= totalPages; i++) {
+                    d.setPage(i);
+                    if (i === 1) continue; // skip cover
+                    d.setTextColor(148, 163, 184);
+                    d.setFontSize(8);
+                    d.setFont('helvetica', 'normal');
+                    d.text(settings?.footer || 'Laporan Internal Rumah Sakit', 40, pageHeight - 30);
+                    d.text(`Halaman ${i - 1} dari ${totalPages - 1}`, pageWidth - 40, pageHeight - 30, { align: 'right' });
+                    d.setDrawColor(226, 232, 240);
+                    d.setLineWidth(0.75);
+                    d.line(40, pageHeight - 40, pageWidth - 40, pageHeight - 40);
+                }
+            };
+
+            const drawKopSurat = (d: jsPDF) => {
+                d.setDrawColor(30, 41, 59);
+                d.setLineWidth(1.5);
+                d.line(40, 110, pageWidth - 40, 110);
+                d.setDrawColor(30, 41, 59);
+                d.setLineWidth(0.5);
+                d.line(40, 114, pageWidth - 40, 114);
+
+                d.setTextColor(30, 41, 59);
+                d.setFont('helvetica', 'bold');
+                d.setFontSize(14);
+                d.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), 40, 50);
+
+                d.setFont('helvetica', 'normal');
+                d.setFontSize(9);
+                d.setTextColor(71, 85, 105);
+                d.text(settings?.alamat || '', 40, 68);
+                d.text(`Kota: ${settings?.kota || '-'} | Telp: ${settings?.telepon || '-'} | Email: ${settings?.email || '-'} | Web: ${settings?.website || '-'}`, 40, 84);
+
+                if (settings?.tagline) {
+                    d.setFont('helvetica', 'oblique');
+                    d.setFontSize(8);
+                    d.text(`"${settings.tagline}"`, 40, 98);
+                }
+            };
+
+            // Cover Page
+            doc.setFillColor(rgbColor[0], rgbColor[1], rgbColor[2]);
+            doc.rect(0, 0, pageWidth, pageHeight, 'F');
+            doc.setTextColor(255, 255, 255);
+
+            doc.setFontSize(22);
+            doc.setFont('helvetica', 'bold');
+            doc.text('LAPORAN STRATEGIC MAP', pageWidth / 2, pageHeight / 2 - 60, { align: 'center' });
+
+            const uName = selectedUnit === 'ALL' ? 'Semua Unit Kerja' : (units.find(u => u.id === selectedUnit)?.nama_unit || selectedUnit);
+            doc.setFontSize(16);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`Unit Kerja: ${uName}`, pageWidth / 2, pageHeight / 2 - 20, { align: 'center' });
+            doc.text(`Tahun: ${selectedYear || 'Semua'}`, pageWidth / 2, pageHeight / 2 + 15, { align: 'center' });
+
+            doc.setFontSize(12);
+            doc.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), pageWidth / 2, pageHeight / 2 + 65, { align: 'center' });
+
+            doc.addPage();
+
+            // TOC Page
+            let tocPageNum = doc.getCurrentPageInfo().pageNumber;
+            doc.addPage(); // content page 1
+
+            let contentPageStart = doc.getCurrentPageInfo().pageNumber;
+
+            // Draw KOP Surat on first content page
+            drawKopSurat(doc);
+
+            doc.setTextColor(30, 41, 59);
+            doc.setFontSize(13);
+            doc.setFont('helvetica', 'bold');
+            doc.text('A. Peta Strategi Rantai Hubungan Sebab Akibat', 40, 140);
+
+            // Add Peta Strategi Image
+            const imgWidth = pageWidth - 80;
+            const imgHeight = 400; // fit well on A4
+            doc.addImage(image, 'PNG', 40, 160, imgWidth, imgHeight);
+
+            // Add page for details
+            doc.addPage();
+            addHeader(doc, 'Daftar Sasaran Strategis');
+            doc.setFontSize(13);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(30, 41, 59);
+            doc.text('B. Rincian Sasaran Strategis per Perspektif BSC', 40, 80);
+
+            let finalY = 100;
+            const perspects = [
+                { key: 'financial', label: '1. Perspektif Keuangan' },
+                { key: 'customer', label: '2. Perspektif Pelanggan' },
+                { key: 'internal', label: '3. Perspektif Proses Bisnis Internal' },
+                { key: 'learning', label: '4. Perspektif Pembelajaran & Pertumbuhan' },
+            ] as const;
+
+            perspects.forEach(p => {
+                if (finalY > pageHeight - 120) {
+                    doc.addPage();
+                    addHeader(doc, 'Daftar Sasaran Strategis');
+                    finalY = 80;
+                }
+
+                doc.setFontSize(10.5);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(30, 41, 59);
+                doc.text(p.label, 40, finalY);
+
+                const items = objectives.filter(o => o.perspective === p.key);
+                let textY = finalY + 15;
+                if (items.length === 0) {
+                    doc.setFontSize(9);
+                    doc.setFont('helvetica', 'oblique');
+                    doc.setTextColor(148, 163, 184);
+                    doc.text('- Belum ada sasaran strategis di perspektif ini', 50, textY);
+                    textY += 15;
+                } else {
+                    doc.setFontSize(9);
+                    doc.setFont('helvetica', 'normal');
+                    doc.setTextColor(71, 85, 105);
+                    items.forEach((item, idx) => {
+                        if (textY > pageHeight - 60) {
+                            doc.addPage();
+                            addHeader(doc, 'Daftar Sasaran Strategis');
+                            textY = 80;
+                        }
+                        doc.text(`${idx + 1}. ${item.title} (Sumber: ${item.source === 'tows' ? 'TOWS Matrix' : 'Cascading KPI'})`, 55, textY);
+                        textY += 15;
+                    });
+                }
+                finalY = textY + 10;
+            });
+
+            // Add TOC Content
+            doc.setPage(tocPageNum);
+            addHeader(doc, 'Daftar Isi');
+            doc.setTextColor(30, 41, 59);
+            doc.setFontSize(15);
+            doc.setFont('helvetica', 'bold');
+            doc.text('DAFTAR ISI LAPORAN', 40, 100);
+
+            doc.setDrawColor(226, 232, 240);
+            doc.setLineWidth(1);
+            doc.line(40, 112, pageWidth - 40, 112);
+
+            doc.setFontSize(10.5);
+            doc.setFont('helvetica', 'normal');
+
+            doc.text('1. Visualisasi Peta Hubungan Sebab Akibat (Strategic Map)', 40, 140);
+            doc.text(`${contentPageStart - 1}`, pageWidth - 40, 140, { align: 'right' });
+
+            doc.text('2. Rincian Sasaran Strategis per Perspektif BSC', 40, 160);
+            doc.text(`${contentPageStart}`, pageWidth - 40, 160, { align: 'right' });
+
+            doc.text('3. Lembar Tanda Tangan Pengesahan Laporan', 40, 180);
+            const lastPage = doc.getNumberOfPages();
+            doc.text(`${lastPage - 1}`, pageWidth - 40, 180, { align: 'right' });
+
+            // Go to last page for signature block
+            doc.setPage(lastPage);
+            if (finalY > pageHeight - 150) {
+                doc.addPage();
+                finalY = 70;
+            } else {
+                finalY += 15;
+            }
+
+            doc.setFontSize(9.5);
+            doc.setTextColor(51, 65, 85);
+            doc.setFont('helvetica', 'normal');
+            doc.text('Disiapkan oleh,', 60, finalY);
+            doc.text('Staf Perencana / Mutu', 60, finalY + 14);
+            doc.line(60, finalY + 65, 200, finalY + 65);
+            doc.text('Pengelola Peta Strategis', 60, finalY + 78);
+
+            doc.text('Disetujui oleh,', pageWidth - 200, finalY);
+            doc.setFont('helvetica', 'bold');
+            doc.text(settings?.kepala_rs || 'Pimpinan Rumah Sakit', pageWidth - 200, finalY + 14);
+            doc.line(pageWidth - 200, finalY + 65, pageWidth - 60, finalY + 65);
+            doc.setFont('helvetica', 'normal');
+            doc.text(`NIP: ${settings?.nip_kepala || '-'}`, pageWidth - 200, finalY + 78);
+
+            addFooter(doc);
+            doc.save(`Laporan_Strategic_Map_${selectedYear}.pdf`);
+        } catch (err) {
+            console.error('Failed to export map PDF', err);
+            alert('Gagal mengekspor laporan');
+        } finally {
+            setLoading(false);
+        }
     };
 
     const CURRENT_YEAR = new Date().getFullYear();
@@ -153,14 +377,17 @@ export default function StrategicMapPage() {
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
                 <div>
                     <h1 className="text-2xl font-extrabold text-slate-800 mb-1">
-                        <span className="bg-gradient-to-r from-[#137fec] to-purple-600 bg-clip-text text-transparent">Strategic Map</span>
-                        <span className="text-slate-600"> (Peta Strategi)</span>
+                        Strategic Map<span className="text-slate-600"> (Peta Strategi)</span>
                     </h1>
                     <p className="text-slate-500 text-sm">Visualisasi hubungan sebab-akibat antar sasaran strategis berdasarkan input TOWS & Cascading KPI.</p>
                 </div>
                 <div className="flex space-x-3 mt-4 md:mt-0">
-                    <button onClick={handleDownload} className="flex items-center space-x-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors shadow-sm">
-                        <Download size={16} /><span className="text-sm font-medium">Unduh Peta</span>
+                    <button
+                        onClick={handleDownloadPDF}
+                        className="flex items-center space-x-2 px-4 py-2 bg-white border border-primary/20 text-primary hover:bg-primary/5 rounded-lg transition-colors shadow-sm"
+                        disabled={loading}
+                    >
+                        <FileText size={16} /><span className="text-sm font-medium">Laporan</span>
                     </button>
                 </div>
             </div>

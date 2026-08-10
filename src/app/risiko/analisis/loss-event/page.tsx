@@ -2,6 +2,9 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useAppSettings } from '@/hooks/useAppSettings';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { PageHeader, ScoreCard, FilterBar, TopActionBar } from '@/components/SharedUI';
 import DataTable, { type Column } from '@/components/DataTable';
 import {
@@ -243,6 +246,7 @@ function ViewModal({ row, onClose }: { row: LossEvent; onClose: () => void }) {
 
 /* ─── Main Page ─── */
 export default function LossEventPage() {
+    const { settings } = useAppSettings();
     const [rows, setRows] = useState<LossEvent[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -342,6 +346,73 @@ export default function LossEventPage() {
         else fetchData();
     };
 
+    const handleExportPDF = () => {
+        const doc = new jsPDF('p', 'pt', 'a4');
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const hexToRgb = (hex: string): [number, number, number] => { const def: [number, number, number] = [19, 127, 236]; if (!hex) return def; const h = hex.replace('#', ''); if (h.length !== 6) return def; const num = parseInt(h, 16); return [(num >> 16) & 255, (num >> 8) & 255, num & 255]; };
+        const primaryColor = settings?.warna_primer || '#137fec';
+        const rgbColor = hexToRgb(primaryColor);
+        const addHeader = (d: jsPDF, title: string) => { d.setDrawColor(226, 232, 240); d.setLineWidth(1); d.line(40, 55, pageWidth - 40, 55); d.setTextColor(71, 85, 105); d.setFontSize(8); d.setFont('helvetica', 'bold'); d.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), 40, 45); d.setTextColor(148, 163, 184); d.setFont('helvetica', 'normal'); d.text(title, pageWidth - 40, 45, { align: 'right' }); };
+        const addFooter = (d: jsPDF) => { const tp = d.getNumberOfPages(); for (let i = 1; i <= tp; i++) { d.setPage(i); if (i === 1) continue; d.setTextColor(148, 163, 184); d.setFontSize(8); d.setFont('helvetica', 'normal'); d.text(settings?.footer || 'Laporan Internal Rumah Sakit', 40, pageHeight - 30); d.text(`Halaman ${i - 1} dari ${tp - 1}`, pageWidth - 40, pageHeight - 30, { align: 'right' }); d.setDrawColor(226, 232, 240); d.setLineWidth(0.75); d.line(40, pageHeight - 40, pageWidth - 40, pageHeight - 40); } };
+        const drawKopSurat = (d: jsPDF) => { d.setDrawColor(30, 41, 59); d.setLineWidth(1.5); d.line(40, 110, pageWidth - 40, 110); d.setLineWidth(0.5); d.line(40, 114, pageWidth - 40, 114); d.setTextColor(30, 41, 59); d.setFont('helvetica', 'bold'); d.setFontSize(14); d.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), 40, 50); d.setFont('helvetica', 'normal'); d.setFontSize(9); d.setTextColor(71, 85, 105); d.text(settings?.alamat || '', 40, 68); d.text(`Kota: ${settings?.kota || '-'} | Telp: ${settings?.telepon || '-'} | Email: ${settings?.email || '-'} | Web: ${settings?.website || '-'}`, 40, 84); if (settings?.tagline) { d.setFont('helvetica', 'oblique'); d.setFontSize(8); d.text(`"${settings.tagline}"`, 40, 98); } };
+
+        // Cover
+        doc.setFillColor(rgbColor[0], rgbColor[1], rgbColor[2]); doc.rect(0, 0, pageWidth, pageHeight, 'F'); doc.setTextColor(255, 255, 255);
+        doc.setFontSize(22); doc.setFont('helvetica', 'bold'); doc.text('LAPORAN LOSS EVENT DATABASE', pageWidth / 2, pageHeight / 2 - 60, { align: 'center' });
+        doc.setFontSize(16); doc.setFont('helvetica', 'normal'); doc.text(`Tahun: ${year || 'Semua'}`, pageWidth / 2, pageHeight / 2, { align: 'center' });
+        doc.setFontSize(12); doc.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), pageWidth / 2, pageHeight / 2 + 50, { align: 'center' });
+
+        doc.addPage(); let tocPageNum = doc.getCurrentPageInfo().pageNumber; doc.addPage();
+        let contentPageStart = doc.getCurrentPageInfo().pageNumber;
+        drawKopSurat(doc);
+        doc.setTextColor(30, 41, 59); doc.setFontSize(13); doc.setFont('helvetica', 'bold');
+        doc.text('A. Daftar Kejadian Risiko (Loss Event Database)', 40, 140);
+        let finalY = 160;
+
+        let rowIdx = 1;
+        const tableData = filtered.map(item => [
+            rowIdx++,
+            item.unit_kerja?.nama_unit || '-',
+            new Date(item.tanggal_kejadian).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }),
+            item.judul_kejadian || '-',
+            item.kategori || '-',
+            `${item.skala_dampak ?? '-'}/5`,
+            `Rp ${((item.dampak_finansial ?? 0) / 1_000_000).toFixed(1)} Jt`,
+            item.status || '-'
+        ]);
+
+        autoTable(doc, {
+            startY: finalY,
+            head: [['No', 'Unit Kerja', 'Tanggal', 'Judul Kejadian', 'Kategori', 'Dampak', 'Valuasi', 'Status']],
+            body: tableData, theme: 'grid',
+            headStyles: { fillColor: rgbColor, fontSize: 8, fontStyle: 'bold' },
+            styles: { fontSize: 8, cellPadding: 4 },
+            columnStyles: { 0: { cellWidth: 25, halign: 'center' }, 1: { cellWidth: 70 }, 2: { cellWidth: 60 }, 3: { cellWidth: 130 }, 4: { cellWidth: 70 }, 5: { cellWidth: 40, halign: 'center' }, 6: { cellWidth: 65, halign: 'right' }, 7: { cellWidth: 55, halign: 'center' } },
+            margin: { left: 40, right: 40 },
+            didDrawPage: () => { const cp = doc.getCurrentPageInfo().pageNumber; if (cp > contentPageStart) addHeader(doc, 'Laporan Loss Event'); }
+        });
+        finalY = (doc as any).lastAutoTable.finalY + 20;
+
+        // TOC
+        doc.setPage(tocPageNum); addHeader(doc, 'Daftar Isi');
+        doc.setTextColor(30, 41, 59); doc.setFontSize(15); doc.setFont('helvetica', 'bold'); doc.text('DAFTAR ISI LAPORAN', 40, 100);
+        doc.setDrawColor(226, 232, 240); doc.setLineWidth(1); doc.line(40, 112, pageWidth - 40, 112);
+        doc.setFontSize(10.5); doc.setFont('helvetica', 'normal');
+        doc.text('1. Daftar Kejadian Risiko (Loss Event Database)', 40, 140); doc.text(`${contentPageStart - 1}`, pageWidth - 40, 140, { align: 'right' });
+        doc.text('2. Lembar Tanda Tangan Pengesahan', 40, 160); const lastPage = doc.getNumberOfPages(); doc.text(`${lastPage - 1}`, pageWidth - 40, 160, { align: 'right' });
+
+        // Signature
+        doc.setPage(lastPage); if (finalY > pageHeight - 150) { doc.addPage(); finalY = 70; } else { finalY += 15; }
+        doc.setFontSize(9.5); doc.setTextColor(51, 65, 85); doc.setFont('helvetica', 'normal');
+        doc.text('Disiapkan oleh,', 60, finalY); doc.text('Staf Komite Mutu & Manajemen Risiko', 60, finalY + 14);
+        doc.line(60, finalY + 65, 200, finalY + 65); doc.text('Pengelola Manajemen Risiko', 60, finalY + 78);
+        doc.text('Disetujui oleh,', pageWidth - 200, finalY); doc.setFont('helvetica', 'bold'); doc.text(settings?.kepala_rs || 'Pimpinan Rumah Sakit', pageWidth - 200, finalY + 14);
+        doc.line(pageWidth - 200, finalY + 65, pageWidth - 60, finalY + 65); doc.setFont('helvetica', 'normal'); doc.text(`NIP: ${settings?.nip_kepala || '-'}`, pageWidth - 200, finalY + 78);
+
+        addFooter(doc); doc.save(`Laporan_Loss_Event_${year || 'Semua'}.pdf`);
+    };
+
     const STATUS_COLOR: Record<string, string> = {
         'Investigasi': 'badge-red', 'Penanganan': 'badge-amber',
         'Penelusuran': 'badge-blue', 'Terselesaikan': 'badge-green', 'Closed': 'badge-gray',
@@ -438,7 +509,7 @@ export default function LossEventPage() {
                     }
                     actions={
                         <>
-                            <button className="btn-secondary" onClick={() => alert('Mengunduh laporan Loss Event...')}><Download size={15} /><span className="hidden sm:inline">Laporan</span></button>
+                            <button className="btn-secondary border-primary/20 text-primary hover:bg-primary/5" onClick={handleExportPDF}><FileText size={15} /><span className="hidden sm:inline">Laporan</span></button>
                             <button className="btn-primary" onClick={() => { setEditRow(null); setShowModal(true); }}><Plus size={15} /><span>Catat Event</span></button>
                         </>
                     }
