@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { PageHeader } from '@/components/SharedUI';
-import { Eye, Target, Save, Loader2, Plus, Pencil, Trash2, CheckCircle2, GripVertical, X } from 'lucide-react';
+import { Eye, Target, Save, Loader2, Plus, Pencil, Trash2, CheckCircle2, GripVertical, X, FileText, ChevronDown } from 'lucide-react';
 import FormInputAI from '@/components/FormInputAI';
+import jsPDF from 'jspdf';
+import { useAppSettings } from '@/hooks/useAppSettings';
 
 interface MisiItem {
     id?: string;
@@ -26,11 +28,14 @@ interface VisiMisiData {
 const CURRENT_YEAR = new Date().getFullYear();
 
 export default function VisiMisiPage() {
+    const { settings } = useAppSettings();
     const [year, setYear] = useState(String(CURRENT_YEAR));
     const [visi, setVisi] = useState('');
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
     const [existingId, setExistingId] = useState<string | null>(null);
+    const [showDropdown, setShowDropdown] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
 
     // Misi items state
     const [misiItems, setMisiItems] = useState<MisiItem[]>([]);
@@ -40,6 +45,15 @@ export default function VisiMisiPage() {
     const [showMisiModal, setShowMisiModal] = useState(false);
     const [savingMisi, setSavingMisi] = useState(false);
     const [deletingId, setDeletingId] = useState<string | null>(null);
+
+    // Dropdown outside click
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setShowDropdown(false);
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
 
     const fetchMisiItems = useCallback(async (vmId: string) => {
         setLoadingMisi(true);
@@ -235,6 +249,165 @@ export default function VisiMisiPage() {
         }
     };
 
+    // ====== PDF Export Handler ======
+    const handleExportPDF = () => {
+        setShowDropdown(false);
+        const doc = new jsPDF('p', 'pt', 'a4');
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+
+        const hexToRgb = (hex: string): [number, number, number] => {
+            const def: [number, number, number] = [19, 127, 236];
+            if (!hex) return def;
+            const h = hex.replace('#', '');
+            if (h.length !== 6) return def;
+            const num = parseInt(h, 16);
+            return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
+        };
+        const rgbColor = hexToRgb(settings?.warna_primer || '#137fec');
+
+        // --- Kop Surat ---
+        doc.setDrawColor(30, 41, 59);
+        doc.setLineWidth(1.5);
+        doc.line(40, 110, pageWidth - 40, 110);
+        doc.setLineWidth(0.5);
+        doc.line(40, 114, pageWidth - 40, 114);
+        doc.setTextColor(30, 41, 59);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(14);
+        doc.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), 40, 50);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(71, 85, 105);
+        doc.text(settings?.alamat || '', 40, 68);
+        doc.text(`Kota: ${settings?.kota || '-'} | Telp: ${settings?.telepon || '-'} | Email: ${settings?.email || '-'} | Web: ${settings?.website || '-'}`, 40, 84);
+        if (settings?.tagline) {
+            doc.setFont('helvetica', 'italic');
+            doc.setFontSize(8);
+            doc.text(`"${settings.tagline}"`, 40, 98);
+        }
+
+        // --- Title ---
+        doc.setTextColor(30, 41, 59);
+        doc.setFontSize(16);
+        doc.setFont('helvetica', 'bold');
+        doc.text('VISI DAN MISI RUMAH SAKIT', pageWidth / 2, 145, { align: 'center' });
+
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(100, 116, 139);
+        doc.text(`Tahun Perencanaan: ${year}`, pageWidth / 2, 163, { align: 'center' });
+
+        // --- Visi Section ---
+        let curY = 195;
+        doc.setFillColor(rgbColor[0], rgbColor[1], rgbColor[2]);
+        doc.roundedRect(40, curY, pageWidth - 80, 28, 6, 6, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.text('VISI', 55, curY + 18);
+
+        curY += 40;
+        doc.setFillColor(248, 250, 252);
+        const visiText = visi || 'Belum ada pernyataan visi.';
+        const visiWrapped = doc.splitTextToSize(visiText, pageWidth - 120);
+        const visiBoxH = Math.max(visiWrapped.length * 16 + 24, 50);
+        doc.roundedRect(40, curY, pageWidth - 80, visiBoxH, 6, 6, 'F');
+        doc.setDrawColor(226, 232, 240);
+        doc.roundedRect(40, curY, pageWidth - 80, visiBoxH, 6, 6, 'S');
+
+        doc.setTextColor(30, 41, 59);
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.text(visiWrapped, 60, curY + 20);
+
+        curY += visiBoxH + 25;
+
+        // --- Misi Section ---
+        doc.setFillColor(5, 150, 105);
+        doc.roundedRect(40, curY, pageWidth - 80, 28, 6, 6, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`MISI (${misiItems.length} Pernyataan)`, 55, curY + 18);
+
+        curY += 40;
+
+        if (misiItems.length === 0) {
+            doc.setTextColor(148, 163, 184);
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'italic');
+            doc.text('Belum ada pernyataan misi yang ditetapkan.', 60, curY + 5);
+            curY += 25;
+        } else {
+            misiItems.forEach((item) => {
+                const misiText = `${item.nomor}. ${item.isi_misi}`;
+                const wrapped = doc.splitTextToSize(misiText, pageWidth - 130);
+                const boxH = wrapped.length * 15 + 18;
+
+                // Page break check
+                if (curY + boxH > pageHeight - 80) {
+                    doc.addPage();
+                    curY = 50;
+                }
+
+                // Misi number circle
+                doc.setFillColor(5, 150, 105);
+                doc.circle(55, curY + 10, 10, 'F');
+                doc.setTextColor(255, 255, 255);
+                doc.setFontSize(9);
+                doc.setFont('helvetica', 'bold');
+                doc.text(String(item.nomor), 55, curY + 13, { align: 'center' });
+
+                // Misi card
+                doc.setFillColor(248, 250, 252);
+                doc.roundedRect(75, curY, pageWidth - 115, boxH, 5, 5, 'F');
+                doc.setDrawColor(226, 232, 240);
+                doc.roundedRect(75, curY, pageWidth - 115, boxH, 5, 5, 'S');
+
+                doc.setTextColor(30, 41, 59);
+                doc.setFontSize(9.5);
+                doc.setFont('helvetica', 'normal');
+                doc.text(doc.splitTextToSize(item.isi_misi, pageWidth - 150), 85, curY + 14);
+
+                curY += boxH + 10;
+            });
+        }
+
+        // --- Signature Block ---
+        let sigY = curY + 30;
+        if (sigY > pageHeight - 140) {
+            doc.addPage();
+            sigY = 60;
+        }
+        doc.setFontSize(9.5);
+        doc.setTextColor(51, 65, 85);
+        doc.setFont('helvetica', 'normal');
+        doc.text('Ditetapkan oleh,', pageWidth - 200, sigY);
+        doc.setFont('helvetica', 'bold');
+        doc.text(settings?.kepala_rs || 'Direktur RS', pageWidth - 200, sigY + 14);
+        doc.setDrawColor(51, 65, 85);
+        doc.line(pageWidth - 200, sigY + 55, pageWidth - 60, sigY + 55);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`NIP: ${settings?.nip_kepala || '-'}`, pageWidth - 200, sigY + 67);
+
+        // --- Footer on all pages ---
+        const totalPages = doc.getNumberOfPages();
+        for (let i = 1; i <= totalPages; i++) {
+            doc.setPage(i);
+            doc.setDrawColor(226, 232, 240);
+            doc.setLineWidth(0.75);
+            doc.line(40, pageHeight - 40, pageWidth - 40, pageHeight - 40);
+            doc.setTextColor(148, 163, 184);
+            doc.setFontSize(8);
+            doc.setFont('helvetica', 'normal');
+            doc.text(settings?.footer || 'Dokumen Visi & Misi Rumah Sakit', 40, pageHeight - 28);
+            doc.text(`Halaman ${i} dari ${totalPages}`, pageWidth - 40, pageHeight - 28, { align: 'right' });
+        }
+
+        doc.save(`Visi_Misi_RS_${year}.pdf`);
+    };
+
     return (
         <div>
             <PageHeader
@@ -245,6 +418,28 @@ export default function VisiMisiPage() {
                         <select className="form-input w-32" value={year} onChange={e => setYear(e.target.value)}>
                             {[CURRENT_YEAR + 1, CURRENT_YEAR, CURRENT_YEAR - 1, CURRENT_YEAR - 2].map(y => <option key={y} value={y}>{y}</option>)}
                         </select>
+                        {/* Laporan Dropdown */}
+                        <div className="relative" ref={dropdownRef}>
+                            <button
+                                className="btn-secondary border-primary/20 text-primary hover:bg-primary/5 flex items-center gap-1.5 py-2 px-3.5 text-sm font-medium shadow-sm transition-all"
+                                onClick={() => setShowDropdown(v => !v)}
+                            >
+                                <FileText size={16} />
+                                <span>Laporan</span>
+                                <ChevronDown size={14} className={`transition-transform duration-200 ${showDropdown ? 'rotate-180' : ''}`} />
+                            </button>
+                            {showDropdown && (
+                                <div className="absolute right-0 top-full mt-1.5 w-52 bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-1.5 animate-in fade-in slide-in-from-top-1">
+                                    <button
+                                        onClick={handleExportPDF}
+                                        className="w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 flex items-center gap-2.5 text-slate-700 transition-colors"
+                                    >
+                                        <FileText size={15} className="text-rose-500" />
+                                        <span>Unduh PDF</span>
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 }
             />
