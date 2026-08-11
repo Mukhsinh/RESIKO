@@ -355,7 +355,7 @@ export default function LossEventPage() {
         const rgbColor = hexToRgb(primaryColor);
         const addHeader = (d: jsPDF, title: string) => { d.setDrawColor(226, 232, 240); d.setLineWidth(1); d.line(40, 55, pageWidth - 40, 55); d.setTextColor(71, 85, 105); d.setFontSize(8); d.setFont('helvetica', 'bold'); d.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), 40, 45); d.setTextColor(148, 163, 184); d.setFont('helvetica', 'normal'); d.text(title, pageWidth - 40, 45, { align: 'right' }); };
         const addFooter = (d: jsPDF) => { const tp = d.getNumberOfPages(); for (let i = 1; i <= tp; i++) { d.setPage(i); if (i === 1) continue; d.setTextColor(148, 163, 184); d.setFontSize(8); d.setFont('helvetica', 'normal'); d.text(settings?.footer || 'Laporan Internal Rumah Sakit', 40, pageHeight - 30); d.text(`Halaman ${i - 1} dari ${tp - 1}`, pageWidth - 40, pageHeight - 30, { align: 'right' }); d.setDrawColor(226, 232, 240); d.setLineWidth(0.75); d.line(40, pageHeight - 40, pageWidth - 40, pageHeight - 40); } };
-        const drawKopSurat = (d: jsPDF) => { d.setDrawColor(30, 41, 59); d.setLineWidth(1.5); d.line(40, 110, pageWidth - 40, 110); d.setLineWidth(0.5); d.line(40, 114, pageWidth - 40, 114); d.setTextColor(30, 41, 59); d.setFont('helvetica', 'bold'); d.setFontSize(14); d.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), 40, 50); d.setFont('helvetica', 'normal'); d.setFontSize(9); d.setTextColor(71, 85, 105); d.text(settings?.alamat || '', 40, 68); d.text(`Kota: ${settings?.kota || '-'} | Telp: ${settings?.telepon || '-'} | Email: ${settings?.email || '-'} | Web: ${settings?.website || '-'}`, 40, 84); if (settings?.tagline) { d.setFont('helvetica', 'oblique'); d.setFontSize(8); d.text(`"${settings.tagline}"`, 40, 98); } };
+        const drawKopSurat = (d: jsPDF) => { d.setDrawColor(30, 41, 59); d.setLineWidth(1.5); d.line(40, 110, pageWidth - 40, 110); d.setLineWidth(0.5); d.line(40, 114, pageWidth - 40, 114); d.setTextColor(30, 41, 59); d.setFont('helvetica', 'bold'); d.setFontSize(14); d.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), 40, 50); d.setFont('helvetica', 'normal'); d.setFontSize(9); d.setTextColor(71, 85, 105); d.text(settings?.alamat || '', 40, 68); d.text(`Kota: ${settings?.kota || '-'} | Telp: ${settings?.telepon || '-'} | Email: ${settings?.email || '-'} | Web: ${settings?.website || '-'}`, 40, 84); if (settings?.tagline) { d.setFont('helvetica', 'italic'); d.setFontSize(8); d.text(`"${settings.tagline}"`, 40, 98); } };
 
         // Cover
         doc.setFillColor(rgbColor[0], rgbColor[1], rgbColor[2]); doc.rect(0, 0, pageWidth, pageHeight, 'F'); doc.setTextColor(255, 255, 255);
@@ -405,9 +405,9 @@ export default function LossEventPage() {
         // Signature
         doc.setPage(lastPage); if (finalY > pageHeight - 150) { doc.addPage(); finalY = 70; } else { finalY += 15; }
         doc.setFontSize(9.5); doc.setTextColor(51, 65, 85); doc.setFont('helvetica', 'normal');
-        doc.text('Disiapkan oleh,', 60, finalY); doc.text('Staf Komite Mutu & Manajemen Risiko', 60, finalY + 14);
-        doc.line(60, finalY + 65, 200, finalY + 65); doc.text('Pengelola Manajemen Risiko', 60, finalY + 78);
-        doc.text('Disetujui oleh,', pageWidth - 200, finalY); doc.setFont('helvetica', 'bold'); doc.text(settings?.kepala_rs || 'Pimpinan Rumah Sakit', pageWidth - 200, finalY + 14);
+        doc.text('Disiapkan oleh,', 60, finalY); doc.text(settings?.jabatan_penandatangan_kiri || 'Penanggungjawab Unit', 60, finalY + 14);
+        doc.line(60, finalY + 65, 200, finalY + 65); doc.text(settings?.nama_penandatangan_kiri || 'Penanggungjawab Unit Kerja', 60, finalY + 78);
+        doc.text('Disetujui oleh,', pageWidth - 200, finalY); doc.setFont('helvetica', 'bold'); doc.text(settings?.kepala_rs || 'Kepala / Direktur RS', pageWidth - 200, finalY + 14);
         doc.line(pageWidth - 200, finalY + 65, pageWidth - 60, finalY + 65); doc.setFont('helvetica', 'normal'); doc.text(`NIP: ${settings?.nip_kepala || '-'}`, pageWidth - 200, finalY + 78);
 
         addFooter(doc); doc.save(`Laporan_Loss_Event_${year || 'Semua'}.pdf`);
@@ -478,7 +478,7 @@ export default function LossEventPage() {
                     Frekuensi dan Potensi Kerugian per Unit Kerja
                 </h3>
                 <div className="h-72 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                         <BarChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                             <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} dy={10} />

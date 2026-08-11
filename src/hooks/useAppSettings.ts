@@ -17,6 +17,8 @@ export interface AppSettings {
     tagline?: string;
     kepala_rs?: string;
     nip_kepala?: string;
+    jabatan_penandatangan_kiri?: string;
+    nama_penandatangan_kiri?: string;
 }
 
 const CACHE_KEY = 'app_branding_settings';
@@ -36,6 +38,8 @@ export function useAppSettings(enabled: boolean = true) {
         tagline: '',
         kepala_rs: '',
         nip_kepala: '',
+        jabatan_penandatangan_kiri: 'Penanggungjawab Unit',
+        nama_penandatangan_kiri: 'Penanggungjawab Unit Kerja',
     });
     const [loading, setLoading] = useState(true);
 
@@ -60,7 +64,7 @@ export function useAppSettings(enabled: boolean = true) {
             try {
                 const { data, error } = await supabase
                     .from('app_settings')
-                    .select('nama_aplikasi, nama_rs, logo_url, footer, warna_primer, alamat, kota, telepon, email, website, tagline, kepala_rs, nip_kepala')
+                    .select('*')
                     .limit(1)
                     .maybeSingle();
 
@@ -79,6 +83,8 @@ export function useAppSettings(enabled: boolean = true) {
                         tagline: data.tagline || '',
                         kepala_rs: data.kepala_rs || '',
                         nip_kepala: data.nip_kepala || '',
+                        jabatan_penandatangan_kiri: data.jabatan_penandatangan_kiri || 'Penanggungjawab Unit',
+                        nama_penandatangan_kiri: data.nama_penandatangan_kiri || 'Penanggungjawab Unit Kerja',
                     };
                     setSettings(newSettings);
                     localStorage.setItem(CACHE_KEY, JSON.stringify(newSettings));

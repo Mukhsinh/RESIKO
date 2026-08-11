@@ -305,7 +305,7 @@ export default function RKTPage() {
             d.text(`Kota: ${settings?.kota || '-'} | Telp: ${settings?.telepon || '-'} | Email: ${settings?.email || '-'} | Web: ${settings?.website || '-'}`, 40, 84);
 
             if (settings?.tagline) {
-                d.setFont('helvetica', 'oblique');
+                d.setFont('helvetica', 'italic');
                 d.setFontSize(8);
                 d.text(`"${settings.tagline}"`, 40, 98);
             }
@@ -424,13 +424,13 @@ export default function RKTPage() {
         doc.setTextColor(51, 65, 85);
         doc.setFont('helvetica', 'normal');
         doc.text('Disiapkan oleh,', 60, finalY);
-        doc.text('Staf Perencana / Kegiatan', 60, finalY + 14);
+        doc.text(settings?.jabatan_penandatangan_kiri || 'Penanggungjawab Unit', 60, finalY + 14);
         doc.line(60, finalY + 65, 200, finalY + 65);
-        doc.text('Pengelola Rencana Kerja', 60, finalY + 78);
+        doc.text(settings?.nama_penandatangan_kiri || '............................', 60, finalY + 78);
 
         doc.text('Disetujui oleh,', pageWidth - 200, finalY);
         doc.setFont('helvetica', 'bold');
-        doc.text(settings?.kepala_rs || 'Pimpinan Rumah Sakit', pageWidth - 200, finalY + 14);
+        doc.text(settings?.kepala_rs || 'Direktur RS', pageWidth - 200, finalY + 14);
         doc.line(pageWidth - 200, finalY + 65, pageWidth - 60, finalY + 65);
         doc.setFont('helvetica', 'normal');
         doc.text(`NIP: ${settings?.nip_kepala || '-'}`, pageWidth - 200, finalY + 78);

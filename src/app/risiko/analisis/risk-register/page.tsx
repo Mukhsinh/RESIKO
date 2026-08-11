@@ -204,7 +204,7 @@ export default function RiskRegisterPage() {
                 d.text(`Kota: ${settings?.kota || '-'} | Telp: ${settings?.telepon || '-'} | Email: ${settings?.email || '-'} | Web: ${settings?.website || '-'}`, 40, 74);
 
                 if (settings?.tagline) {
-                    d.setFont('helvetica', 'oblique');
+                    d.setFont('helvetica', 'italic');
                     d.setFontSize(8);
                     d.text(`"${settings.tagline}"`, 40, 86);
                 }
@@ -324,13 +324,13 @@ export default function RiskRegisterPage() {
             doc.setTextColor(51, 65, 85);
             doc.setFont('helvetica', 'normal');
             doc.text('Disiapkan oleh,', 60, finalY);
-            doc.text('Pengelola Manajemen Risiko', 60, finalY + 14);
+            doc.text(settings?.jabatan_penandatangan_kiri || 'Penanggungjawab Unit', 60, finalY + 14);
             doc.line(60, finalY + 60, 220, finalY + 60);
 
             doc.text(`${kota}, ${tgl}`, pageWidth - 220, finalY);
             doc.text('Disetujui oleh,', pageWidth - 220, finalY + 14);
             doc.setFont('helvetica', 'bold');
-            doc.text(settings?.kepala_rs || 'Pimpinan Rumah Sakit', pageWidth - 220, finalY + 28);
+            doc.text(settings?.kepala_rs || 'Kepala / Direktur RS', pageWidth - 220, finalY + 28);
             doc.line(pageWidth - 220, finalY + 60, pageWidth - 60, finalY + 60);
             doc.setFont('helvetica', 'normal');
             doc.text(`NIP: ${settings?.nip_kepala || '-'}`, pageWidth - 220, finalY + 72);

@@ -331,7 +331,7 @@ export default function DashboardPage() {
                             {riskDonutData.length === 0 ? (
                                 <span className="text-xs text-slate-400 font-medium">Tidak ada data risiko untuk ditampilkan</span>
                             ) : (
-                                <ResponsiveContainer width="100%" height="100%">
+                                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                                     <PieChart>
                                         <Pie
                                             data={riskDonutData}
@@ -384,7 +384,7 @@ export default function DashboardPage() {
                             </h3>
                             <p className="text-xs text-slate-400 font-medium mb-6">Membandingkan target sasaran strategis dengan capaian realisasi</p>
                             <div className="h-72 w-full">
-                                <ResponsiveContainer width="100%" height="100%">
+                                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                                     <BarChart data={kpiPerUnitData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                                         <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} fontWeight="600" />

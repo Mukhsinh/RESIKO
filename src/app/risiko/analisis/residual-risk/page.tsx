@@ -279,9 +279,9 @@ function ResidualModal({ row, onClose, onSave, units, riskInputs, saving }: {
 
                 {/* Footer */}
                 <div className="flex justify-end gap-3 px-6 pb-6">
-                    <button onClick={onClose} className="btn-secondary">Batal</button>
-                    <button onClick={() => onSave(form)} className="btn-primary flex items-center gap-2" disabled={saving}>
-                        {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                    <button onClick={onClose} className="btn-secondary btn-sm">Batal</button>
+                    <button onClick={() => onSave(form)} className="btn-primary btn-sm flex items-center gap-2" disabled={saving}>
+                        {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                         Simpan Data
                     </button>
                 </div>
@@ -297,10 +297,23 @@ function ViewModal({ row, onClose }: { row: RiskRow; onClose: () => void }) {
     const d_res = row.d_residual ?? Math.ceil(row.dampak * 0.8);
     const skor_res = p_res * d_res;
 
+    const getAppetiteCoordsModal = (score: number) => {
+        const sc = Math.max(1, Math.min(25, score));
+        if (sc <= 2) return { p: 1, d: sc };
+        if (sc <= 4) return { p: 2, d: Math.ceil(sc / 2) };
+        if (sc <= 6) return { p: 2, d: 3 };
+        if (sc <= 9) return { p: 3, d: Math.ceil(sc / 3) };
+        if (sc <= 12) return { p: 3, d: 4 };
+        if (sc <= 16) return { p: 4, d: 4 };
+        return { p: 5, d: 5 };
+    };
+
+    const appCoord = getAppetiteCoordsModal(row.selera_risiko ?? 6);
+
     const heatmapData: HeatmapPoint[] = [
-        { id: 'inh', x: row.dampak, y: row.probabilitas, label: 'Inherent', type: 'inherent' },
-        { id: 'res', x: d_res, y: p_res, label: 'Residual', type: 'residual' },
-        { id: 'app', x: Math.ceil((row.selera_risiko ?? 6) / 5), y: Math.ceil((row.selera_risiko ?? 6) / 5), label: 'Appetite', type: 'appetite' },
+        { id: 'inh', x: row.dampak, y: row.probabilitas, label: 'Inherent Risk', type: 'inherent' },
+        { id: 'res', x: d_res, y: p_res, label: 'Residual Risk', type: 'residual' },
+        { id: 'app', x: appCoord.d, y: appCoord.p, label: `Risk Appetite (${row.selera_risiko ?? 6})`, type: 'appetite' },
     ];
 
     return (
@@ -348,7 +361,7 @@ function ViewModal({ row, onClose }: { row: RiskRow; onClose: () => void }) {
                     <div><span className="text-xs text-slate-400">Status</span><div className="mt-1"><StatusBadge status={row.status} /></div></div>
                 </div>
                 <div className="flex justify-end px-6 pb-6">
-                    <button onClick={onClose} className="btn-secondary">Tutup</button>
+                    <button onClick={onClose} className="btn-secondary btn-sm">Tutup</button>
                 </div>
             </div>
         </div>
@@ -408,6 +421,18 @@ export default function ResidualRiskPage() {
         return matchSearch && matchUnit;
     });
 
+    // Utility for mapping appetite score to 5x5 grid coordinates
+    const getAppetiteCoords = (score: number) => {
+        const sc = Math.max(1, Math.min(25, score));
+        if (sc <= 2) return { p: 1, d: sc };
+        if (sc <= 4) return { p: 2, d: Math.ceil(sc / 2) };
+        if (sc <= 6) return { p: 2, d: 3 };
+        if (sc <= 9) return { p: 3, d: Math.ceil(sc / 3) };
+        if (sc <= 12) return { p: 3, d: 4 };
+        if (sc <= 16) return { p: 4, d: 4 };
+        return { p: 5, d: 5 };
+    };
+
     // Stats computed from real data
     const stats = {
         total: filtered.length,
@@ -423,9 +448,12 @@ export default function ResidualRiskPage() {
     const chartData: HeatmapPoint[] = filtered.flatMap(r => {
         const p_res = (r.p_residual != null ? r.p_residual : Math.ceil(r.probabilitas * 0.5)) || 1;
         const d_res = (r.d_residual != null ? r.d_residual : Math.ceil(r.dampak * 0.8)) || 1;
+        const appScore = r.selera_risiko ?? 6;
+        const appCoord = getAppetiteCoords(appScore);
         return [
-            { id: r.id + '_inh', x: r.dampak, y: r.probabilitas, label: r.identifikasi_risiko, type: 'inherent' as const },
-            { id: r.id + '_res', x: d_res, y: p_res, label: r.identifikasi_risiko, type: 'residual' as const },
+            { id: r.id + '_inh', x: r.dampak, y: r.probabilitas, label: `Inherent: ${r.identifikasi_risiko}`, type: 'inherent' as const },
+            { id: r.id + '_res', x: d_res, y: p_res, label: `Residual: ${r.identifikasi_risiko}`, type: 'residual' as const },
+            { id: r.id + '_app', x: appCoord.d, y: appCoord.p, label: `Target Appetite (${appScore}): ${r.identifikasi_risiko}`, type: 'appetite' as const },
         ];
     });
 
@@ -482,6 +510,25 @@ export default function ResidualRiskPage() {
         fetchData();
     };
 
+    // Unit score comparison data for charts
+    const unitMap: Record<string, { name: string; total: number; sumInherent: number; sumResidual: number }> = {};
+    filtered.forEach(r => {
+        const uName = (r as any).unit_kerja?.nama_unit || r.master_work_units?.name || 'Lainnya';
+        if (!unitMap[uName]) unitMap[uName] = { name: uName, total: 0, sumInherent: 0, sumResidual: 0 };
+        const p_res = r.p_residual ?? Math.ceil(r.probabilitas * 0.5);
+        const d_res = r.d_residual ?? Math.ceil(r.dampak * 0.8);
+        unitMap[uName].total += 1;
+        unitMap[uName].sumInherent += r.skor_risiko;
+        unitMap[uName].sumResidual += (p_res * d_res);
+    });
+    const unitScoreData = Object.values(unitMap).map(u => ({
+        name: u.name.length > 12 ? u.name.substring(0, 10) + '...' : u.name,
+        fullName: u.name,
+        total: u.total,
+        avgInherent: Math.round((u.sumInherent / Math.max(1, u.total)) * 10) / 10,
+        avgResidual: Math.round((u.sumResidual / Math.max(1, u.total)) * 10) / 10,
+    }));
+
     const handleExportPDF = () => {
         const doc = new jsPDF('p', 'pt', 'a4');
         const pageWidth = doc.internal.pageSize.getWidth();
@@ -526,92 +573,413 @@ export default function ResidualRiskPage() {
             d.setFont('helvetica', 'normal'); d.setFontSize(9); d.setTextColor(71, 85, 105);
             d.text(settings?.alamat || '', 40, 68);
             d.text(`Kota: ${settings?.kota || '-'} | Telp: ${settings?.telepon || '-'} | Email: ${settings?.email || '-'} | Web: ${settings?.website || '-'}`, 40, 84);
-            if (settings?.tagline) { d.setFont('helvetica', 'oblique'); d.setFontSize(8); d.text(`"${settings.tagline}"`, 40, 98); }
+            if (settings?.tagline) { d.setFont('helvetica', 'italic'); d.setFontSize(8); d.text(`"${settings.tagline}"`, 40, 98); }
         };
 
-        // Cover Page
+        let pSummary = 3;
+        let pHeatmap = 4;
+        let pChart = 5;
+        let pTable = 6;
+
+        // --- PAGE 1: COVER PAGE ---
         doc.setFillColor(rgbColor[0], rgbColor[1], rgbColor[2]);
         doc.rect(0, 0, pageWidth, pageHeight, 'F');
         doc.setTextColor(255, 255, 255);
-        doc.setFontSize(22); doc.setFont('helvetica', 'bold');
-        doc.text('LAPORAN RESIDUAL RISK', pageWidth / 2, pageHeight / 2 - 60, { align: 'center' });
-        doc.setFontSize(16); doc.setFont('helvetica', 'normal');
-        doc.text(`Tahun: ${year || 'Semua'}`, pageWidth / 2, pageHeight / 2, { align: 'center' });
-        doc.setFontSize(12);
-        doc.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), pageWidth / 2, pageHeight / 2 + 50, { align: 'center' });
 
+        doc.setFontSize(22); doc.setFont('helvetica', 'bold');
+        doc.text('LAPORAN RESIDUAL RISK', pageWidth / 2, pageHeight / 2 - 50, { align: 'center' });
+
+        doc.setFontSize(12); doc.setFont('helvetica', 'normal');
+        doc.text('Analisis Evaluasi Inherent Risk vs Residual Risk & Efektivitas Mitigasi', pageWidth / 2, pageHeight / 2 - 25, { align: 'center' });
+
+        doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+        doc.text(`Tahun Anggaran: ${year || 'Semua'}`, pageWidth / 2, pageHeight / 2 + 20, { align: 'center' });
+
+        doc.setFontSize(11); doc.setFont('helvetica', 'normal');
+        doc.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), pageWidth / 2, pageHeight / 2 + 60, { align: 'center' });
+
+        doc.setFontSize(8.5);
+        doc.text(`Dicetak Pada: ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`, pageWidth / 2, pageHeight - 50, { align: 'center' });
+
+        // --- PAGE 2: TABLE OF CONTENTS ---
         doc.addPage();
-        let tocPageNum = doc.getCurrentPageInfo().pageNumber;
+        const tocPageNum = doc.getCurrentPageInfo().pageNumber;
+
+        // --- PAGE 3: SECTION A - EXECUTIVE SUMMARY & EXPLANATIONS ---
         doc.addPage();
-        let contentPageStart = doc.getCurrentPageInfo().pageNumber;
+        pSummary = doc.getCurrentPageInfo().pageNumber;
         drawKopSurat(doc);
 
         doc.setTextColor(30, 41, 59); doc.setFontSize(13); doc.setFont('helvetica', 'bold');
-        doc.text('A. Rekapitulasi Analisis Residual Risk', 40, 140);
-        let finalY = 160;
+        doc.text('A. Ringkasan Eksekutif & Keterangan Analisis Residual Risk', 40, 132);
+
+        // Metric Cards
+        let boxY = 145;
+        const boxW = (pageWidth - 110) / 4;
+        const metrics = [
+            { label: 'Total Evaluasi', val: stats.total, color: [241, 245, 249], textCol: [30, 41, 59] },
+            { label: 'Inherent (>=15)', val: stats.inheritTinggi, color: [254, 226, 226], textCol: [190, 18, 60] },
+            { label: 'Residual Aman (<5)', val: stats.residualAman, color: [209, 250, 229], textCol: [6, 95, 70] },
+            { label: 'Mitigasi Aktif', val: stats.mitigasiAktif, color: [239, 246, 255], textCol: [29, 78, 216] },
+        ];
+
+        metrics.forEach((m, idx) => {
+            const bx = 40 + idx * (boxW + 10);
+            doc.setFillColor(m.color[0], m.color[1], m.color[2]);
+            doc.roundedRect(bx, boxY, boxW, 45, 6, 6, 'F');
+            doc.setDrawColor(226, 232, 240);
+            doc.roundedRect(bx, boxY, boxW, 45, 6, 6, 'S');
+
+            doc.setFontSize(7.5); doc.setFont('helvetica', 'bold');
+            doc.setTextColor(m.textCol[0], m.textCol[1], m.textCol[2]);
+            doc.text(m.label, bx + boxW / 2, boxY + 16, { align: 'center' });
+
+            doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+            doc.text(String(m.val), bx + boxW / 2, boxY + 36, { align: 'center' });
+        });
+
+        // Explanation Box
+        let expY = 205;
+        doc.setFillColor(248, 250, 252);
+        doc.roundedRect(40, expY, pageWidth - 80, 280, 8, 8, 'F');
+        doc.setDrawColor(226, 232, 240);
+        doc.roundedRect(40, expY, pageWidth - 80, 280, 8, 8, 'S');
+
+        doc.setTextColor(30, 41, 59); doc.setFontSize(10); doc.setFont('helvetica', 'bold');
+        doc.text('Keterangan Penjelasan dan Metodologi Evaluasi Residual Risk:', 52, expY + 20);
+
+        doc.setFontSize(8.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(51, 65, 85);
+
+        const expLines = [
+            '1. Konsep Residual Risk:',
+            '   Residual Risk adalah tingkat sisa risiko yang tetap ada setelah tindakan mitigasi dan pengendalian internal dilaksanakan.',
+            '   Analisis ini membandingkan posisi risiko sebelum mitigasi (Inherent Risk) vs sesudah mitigasi (Residual Risk).',
+            '',
+            '2. Penilaian Efektivitas Mitigasi:',
+            '   Efektivitas mitigasi diukur dari persentase penurunan skor risiko inherent menjadi skor residual:',
+            '   - Sangat Efektif (Penurunan >= 50%): Mitigasi mampu menekan risiko secara signifikan.',
+            '   - Cukup Efektif (Penurunan 20% - 49%): Mitigasi berhasil menurunkan risiko namun perlu pengawasan.',
+            '   - Kurang Efektif (Penurunan < 20%): Tindakan korektif tambahan sangat diperlukan.',
+            '',
+            '3. Metodologi Matriks 5x5 (Probabilitas Residual x Dampak Residual):',
+            '   - Probabilitas Residual (P. Res): Frekuensi terjadinya risiko setelah kontrol diterapkan (Skala 1 - 5).',
+            '   - Dampak Residual (D. Res): Konsekuensi dampak yang tersisa jika risiko terjadi (Skala 1 - 5).',
+            '   - Skor Residual Risk = P. Res x D. Res (Rentang Nilai 1 s/d 25).',
+            '',
+            '4. Batas Toleransi / Risk Appetite RS:',
+            '   Target batas selera risiko adalah skor maksimal 6 (Kategori Rendah/Aman). Risiko dengan skor residual > 6',
+            '   wajib dimasukkan dalam daftar pemantauan aktif dan rencana mitigasi susulan.'
+        ];
+
+        let lineY = expY + 36;
+        expLines.forEach(txt => {
+            if (txt.trim() === '') {
+                lineY += 6;
+            } else {
+                const wrapped = doc.splitTextToSize(txt, pageWidth - 104);
+                doc.text(wrapped, 52, lineY);
+                lineY += wrapped.length * 11;
+            }
+        });
+
+        // --- PAGE 4: SECTION B - HEATMAP MATRIX 5x5 ---
+        doc.addPage();
+        pHeatmap = doc.getCurrentPageInfo().pageNumber;
+        addHeader(doc, 'Visualisasi Heatmap Residual Risk');
+
+        doc.setTextColor(30, 41, 59); doc.setFontSize(13); doc.setFont('helvetica', 'bold');
+        doc.text('B. Visualisasi Matriks Heatmap Risiko 5x5 (Inherent vs Residual)', 40, 75);
+
+        doc.setFontSize(8.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 116, 139);
+        doc.text('Peta sebaran posisi risiko awal (I) dan posisi residual (R) setelah mitigasi pada matriks 5x5.', 40, 88);
+
+        // Draw 5x5 Heatmap Matrix
+        const gridStartX = 90;
+        const gridStartY = 115;
+        const cellW = 82;
+        const cellH = 46;
+
+        doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(71, 85, 105);
+        doc.text('P R O B A B I L I T A S', 30, gridStartY + (cellH * 2.5), { angle: 90, align: 'center' });
+        doc.text('D A M P A K', gridStartX + (cellW * 2.5), gridStartY + (cellH * 5) + 32, { align: 'center' });
+
+        const getMatrixCellColor = (p: number, d: number): [number, number, number] => {
+            const sc = p * d;
+            if (sc >= 15) return [254, 202, 202];
+            if (sc >= 10) return [254, 215, 170];
+            if (sc >= 5) return [254, 243, 199];
+            return [209, 250, 229];
+        };
+
+        for (let p = 5; p >= 1; p--) {
+            const rowIndex = 5 - p;
+            const cy = gridStartY + rowIndex * cellH;
+
+            doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(71, 85, 105);
+            doc.text(`P${p}`, gridStartX - 15, cy + cellH / 2 + 3);
+
+            for (let d = 1; d <= 5; d++) {
+                const colIndex = d - 1;
+                const cx = gridStartX + colIndex * cellW;
+
+                if (p === 1) {
+                    doc.text(`D${d}`, cx + cellW / 2, gridStartY + 5 * cellH + 16, { align: 'center' });
+                }
+
+                const bg = getMatrixCellColor(p, d);
+                doc.setFillColor(bg[0], bg[1], bg[2]);
+                doc.rect(cx, cy, cellW, cellH, 'F');
+                doc.setDrawColor(255, 255, 255); doc.setLineWidth(1.5);
+                doc.rect(cx, cy, cellW, cellH, 'S');
+
+                doc.setFontSize(7); doc.setFont('helvetica', 'bold'); doc.setTextColor(148, 163, 184);
+                doc.text(`${p * d}`, cx + cellW - 5, cy + 10, { align: 'right' });
+
+                const inhCount = filtered.filter(r => r.probabilitas === p && r.dampak === d).length;
+                const resCount = filtered.filter(r => {
+                    const pr = r.p_residual ?? Math.ceil(r.probabilitas * 0.5);
+                    const dr = r.d_residual ?? Math.ceil(r.dampak * 0.8);
+                    return pr === p && dr === d;
+                }).length;
+                const appCount = filtered.filter(r => {
+                    const app = getAppetiteCoords(r.selera_risiko ?? 6);
+                    return app.p === p && app.d === d;
+                }).length;
+
+                const activeBadges: { label: string; count: number; color: [number, number, number] }[] = [];
+                if (inhCount > 0) activeBadges.push({ label: 'I', count: inhCount, color: [225, 29, 72] });
+                if (resCount > 0) activeBadges.push({ label: 'R', count: resCount, color: [5, 150, 105] });
+                if (appCount > 0) activeBadges.push({ label: 'A', count: appCount, color: [37, 99, 235] });
+
+                if (activeBadges.length > 0) {
+                    const bWidth = Math.min(23, (cellW - 8) / activeBadges.length);
+                    activeBadges.forEach((bg, idx) => {
+                        const bx = cx + 4 + idx * (bWidth + 2);
+                        doc.setFillColor(bg.color[0], bg.color[1], bg.color[2]);
+                        doc.roundedRect(bx, cy + 18, bWidth, 16, 3, 3, 'F');
+                        doc.setFontSize(7); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255);
+                        doc.text(`${bg.label}:${bg.count}`, bx + bWidth / 2, cy + 29, { align: 'center' });
+                    });
+                }
+            }
+        }
+
+        // Legend for Heatmap
+        let legY = gridStartY + 5 * cellH + 45;
+        doc.setFillColor(248, 250, 252);
+        doc.roundedRect(40, legY, pageWidth - 80, 50, 6, 6, 'F');
+        doc.setDrawColor(226, 232, 240);
+        doc.roundedRect(40, legY, pageWidth - 80, 50, 6, 6, 'S');
+
+        doc.setFontSize(8.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(51, 65, 85);
+        doc.text('Keterangan Pin / Badge Heatmap:', 52, legY + 18);
+
+        doc.setFillColor(225, 29, 72);
+        doc.roundedRect(52, legY + 26, 26, 14, 3, 3, 'F');
+        doc.setTextColor(255, 255, 255); doc.setFontSize(7.5); doc.setFont('helvetica', 'bold');
+        doc.text('I: n', 65, legY + 36, { align: 'center' });
+        doc.setTextColor(51, 65, 85); doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+        doc.text('Inherent Risk (Awal)', 83, legY + 36);
+
+        doc.setFillColor(5, 150, 105);
+        doc.roundedRect(185, legY + 26, 26, 14, 3, 3, 'F');
+        doc.setTextColor(255, 255, 255); doc.setFontSize(7.5); doc.setFont('helvetica', 'bold');
+        doc.text('R: n', 198, legY + 36, { align: 'center' });
+        doc.setTextColor(51, 65, 85); doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+        doc.text('Residual Risk (Setelah Mitigasi)', 216, legY + 36);
+
+        doc.setFillColor(37, 99, 235);
+        doc.roundedRect(365, legY + 26, 26, 14, 3, 3, 'F');
+        doc.setTextColor(255, 255, 255); doc.setFontSize(7.5); doc.setFont('helvetica', 'bold');
+        doc.text('A: n', 378, legY + 36, { align: 'center' });
+        doc.setTextColor(51, 65, 85); doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+        doc.text('Risk Appetite (Target Toleransi)', 396, legY + 36);
+
+        // --- PAGE 5: SECTION C - UNIT SCORE COMPARISON CHART ---
+        doc.addPage();
+        pChart = doc.getCurrentPageInfo().pageNumber;
+        addHeader(doc, 'Grafik Perbandingan Skor Unit Kerja');
+
+        doc.setTextColor(30, 41, 59); doc.setFontSize(13); doc.setFont('helvetica', 'bold');
+        doc.text('C. Grafik Statistik Perbandingan Skor Inherent vs Residual per Unit Kerja', 40, 75);
+
+        doc.setFontSize(8.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 116, 139);
+        doc.text('Grafik perbandingan rata-rata skor sebelum (Inherent) dan sesudah (Residual) mitigasi.', 40, 88);
+
+        // Draw Column Bar Chart
+        const chartAreaX = 70;
+        const chartAreaY = 120;
+        const chartAreaW = pageWidth - 140;
+        const chartAreaH = 260;
+
+        doc.setFillColor(255, 255, 255);
+        doc.roundedRect(40, chartAreaY - 15, pageWidth - 80, chartAreaH + 65, 8, 8, 'F');
+        doc.setDrawColor(226, 232, 240); doc.setLineWidth(1);
+        doc.roundedRect(40, chartAreaY - 15, pageWidth - 80, chartAreaH + 65, 8, 8, 'S');
+
+        const maxScoreVal = 25;
+        const yTicks = [0, 5, 10, 15, 20, 25];
+
+        yTicks.forEach(tick => {
+            const ty = chartAreaY + chartAreaH - (tick / maxScoreVal) * chartAreaH;
+            doc.setDrawColor(241, 245, 249); doc.setLineWidth(1);
+            doc.line(chartAreaX, ty, chartAreaX + chartAreaW, ty);
+
+            doc.setFontSize(7.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(148, 163, 184);
+            doc.text(String(tick), chartAreaX - 10, ty + 3, { align: 'right' });
+        });
+
+        doc.setDrawColor(203, 213, 225); doc.setLineWidth(1.5);
+        doc.line(chartAreaX, chartAreaY + chartAreaH, chartAreaX + chartAreaW, chartAreaY + chartAreaH);
+
+        const dataUnits = unitScoreData.slice(0, 7);
+        if (dataUnits.length > 0) {
+            const groupW = chartAreaW / dataUnits.length;
+            const barW = Math.min(22, (groupW - 20) / 2);
+
+            dataUnits.forEach((u, i) => {
+                const gx = chartAreaX + i * groupW + groupW / 2;
+
+                // Bar 1: Inherent (Amber/Orange)
+                const inhH = (u.avgInherent / maxScoreVal) * chartAreaH;
+                const bar1X = gx - barW - 2;
+                const bar1Y = chartAreaY + chartAreaH - inhH;
+                doc.setFillColor(245, 158, 11);
+                doc.rect(bar1X, bar1Y, barW, inhH, 'F');
+                doc.setFontSize(7); doc.setFont('helvetica', 'bold'); doc.setTextColor(217, 119, 6);
+                doc.text(String(u.avgInherent), bar1X + barW / 2, bar1Y - 4, { align: 'center' });
+
+                // Bar 2: Residual (Emerald/Green)
+                const resH = (u.avgResidual / maxScoreVal) * chartAreaH;
+                const bar2X = gx + 2;
+                const bar2Y = chartAreaY + chartAreaH - resH;
+                doc.setFillColor(16, 185, 129);
+                doc.rect(bar2X, bar2Y, barW, resH, 'F');
+                doc.setFontSize(7); doc.setFont('helvetica', 'bold'); doc.setTextColor(5, 150, 105);
+                doc.text(String(u.avgResidual), bar2X + barW / 2, bar2Y - 4, { align: 'center' });
+
+                // X Axis Label
+                doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(71, 85, 105);
+                doc.text(u.name, gx, chartAreaY + chartAreaH + 16, { align: 'center' });
+            });
+        } else {
+            doc.setFontSize(10); doc.setTextColor(148, 163, 184);
+            doc.text('Belum ada data unit kerja untuk ditampilkan', pageWidth / 2, chartAreaY + chartAreaH / 2, { align: 'center' });
+        }
+
+        // Chart Legend
+        const cLegY = chartAreaY + chartAreaH + 34;
+        doc.setFillColor(245, 158, 11);
+        doc.rect(pageWidth / 2 - 120, cLegY, 12, 12, 'F');
+        doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(71, 85, 105);
+        doc.text('Rata-rata Skor Inherent', pageWidth / 2 - 102, cLegY + 9);
+
+        doc.setFillColor(16, 185, 129);
+        doc.rect(pageWidth / 2 + 30, cLegY, 12, 12, 'F');
+        doc.text('Rata-rata Skor Residual', pageWidth / 2 + 48, cLegY + 9);
+
+        // --- PAGE 6: SECTION D - DATA RECAPITULATION TABLE ---
+        doc.addPage();
+        pTable = doc.getCurrentPageInfo().pageNumber;
+        drawKopSurat(doc);
+
+        doc.setTextColor(30, 41, 59); doc.setFontSize(13); doc.setFont('helvetica', 'bold');
+        doc.text('D. Rekapitulasi Tabel Analisis Residual Risk', 40, 132);
 
         let rowIdx = 1;
         const tableData = filtered.map(item => {
             const p_res = item.p_residual ?? Math.ceil(item.probabilitas * 0.5);
             const d_res = item.d_residual ?? Math.ceil(item.dampak * 0.8);
             const skor_res = p_res * d_res;
+            const persen_turun = Math.max(0, Math.round((1 - skor_res / Math.max(item.skor_risiko, 1)) * 100));
             return [
                 rowIdx++,
-                (item as any).unit_kerja?.nama_unit || '-',
+                (item as any).unit_kerja?.nama_unit || item.master_work_units?.name || '-',
                 item.kode_risiko || '-',
                 item.identifikasi_risiko || '-',
                 `${item.skor_risiko} (P:${item.probabilitas} D:${item.dampak})`,
                 item.mitigasi || '-',
                 `${skor_res} (P:${p_res} D:${d_res})`,
+                `-${persen_turun}%`,
                 item.status || 'Open'
             ];
         });
 
         autoTable(doc, {
-            startY: finalY,
-            head: [['No', 'Unit Kerja', 'Kode', 'Pernyataan Risiko', 'Inherent', 'Mitigasi', 'Residual', 'Status']],
+            startY: 145,
+            head: [['No', 'Unit Kerja', 'Kode', 'Pernyataan Risiko', 'Inherent', 'Mitigasi', 'Residual', '% Turun', 'Status']],
             body: tableData,
             theme: 'grid',
             headStyles: { fillColor: rgbColor, fontSize: 8, fontStyle: 'bold' },
             styles: { fontSize: 8, cellPadding: 4 },
             columnStyles: {
                 0: { cellWidth: 20, halign: 'center' },
-                1: { cellWidth: 75 },
-                2: { cellWidth: 40 },
-                3: { cellWidth: 110 },
-                4: { cellWidth: 75 },
-                5: { cellWidth: 85 },
-                6: { cellWidth: 75 },
-                7: { cellWidth: 35, halign: 'center' }
+                1: { cellWidth: 70 },
+                2: { cellWidth: 35 },
+                3: { cellWidth: 105 },
+                4: { cellWidth: 65 },
+                5: { cellWidth: 80 },
+                6: { cellWidth: 65 },
+                7: { cellWidth: 40, halign: 'center' },
+                8: { cellWidth: 35, halign: 'center' }
             },
             margin: { left: 40, right: 40 },
-            didDrawPage: () => { const cp = doc.getCurrentPageInfo().pageNumber; if (cp > contentPageStart) addHeader(doc, 'Laporan Residual Risk'); }
+            didDrawPage: () => {
+                const cp = doc.getCurrentPageInfo().pageNumber;
+                if (cp > pTable) addHeader(doc, 'Tabel Data Residual Risk');
+            }
         });
-        finalY = (doc as any).lastAutoTable.finalY + 20;
 
-        // TOC
-        doc.setPage(tocPageNum); addHeader(doc, 'Daftar Isi');
+        let finalY = (doc as any).lastAutoTable.finalY + 25;
+
+        // --- PAGE 2 REFILL: TABLE OF CONTENTS ---
+        doc.setPage(tocPageNum);
+        addHeader(doc, 'Daftar Isi Laporan');
+
         doc.setTextColor(30, 41, 59); doc.setFontSize(15); doc.setFont('helvetica', 'bold');
         doc.text('DAFTAR ISI LAPORAN', 40, 100);
         doc.setDrawColor(226, 232, 240); doc.setLineWidth(1); doc.line(40, 112, pageWidth - 40, 112);
-        doc.setFontSize(10.5); doc.setFont('helvetica', 'normal');
-        doc.text('1. Rekapitulasi Analisis Residual Risk', 40, 140);
-        doc.text(`${contentPageStart - 1}`, pageWidth - 40, 140, { align: 'right' });
-        doc.text('2. Lembar Tanda Tangan Pengesahan Laporan', 40, 160);
-        const lastPage = doc.getNumberOfPages();
-        doc.text(`${lastPage - 1}`, pageWidth - 40, 160, { align: 'right' });
 
-        // Signature
+        const tocItems = [
+            { title: 'A. Ringkasan Eksekutif & Keterangan Penjelasan Residual Risk', page: pSummary },
+            { title: 'B. Visualisasi Matriks Heatmap Risiko 5x5 (Inherent vs Residual)', page: pHeatmap },
+            { title: 'C. Grafik Statistik Perbandingan Skor per Unit Kerja', page: pChart },
+            { title: 'D. Rekapitulasi Tabel Analisis Residual Risk', page: pTable },
+            { title: 'E. Lembar Pengesahan Laporan', page: doc.getNumberOfPages() }
+        ];
+
+        doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(51, 65, 85);
+        let tocY = 145;
+        tocItems.forEach(item => {
+            doc.text(item.title, 40, tocY);
+            doc.setDrawColor(203, 213, 225); doc.setLineDashPattern([2, 2], 0);
+            doc.line(380, tocY - 2, pageWidth - 65, tocY - 2);
+            doc.setLineDashPattern([], 0);
+            doc.text(String(item.page - 1), pageWidth - 40, tocY, { align: 'right' });
+            tocY += 28;
+        });
+
+        // --- SECTION E: SIGNATURE SHEET ---
+        const lastPage = doc.getNumberOfPages();
         doc.setPage(lastPage);
-        if (finalY > pageHeight - 150) { doc.addPage(); finalY = 70; } else { finalY += 15; }
+
+        if (finalY > pageHeight - 160) {
+            doc.addPage();
+            finalY = 70;
+            addHeader(doc, 'Lembar Pengesahan');
+        }
+
         doc.setFontSize(9.5); doc.setTextColor(51, 65, 85); doc.setFont('helvetica', 'normal');
         doc.text('Disiapkan oleh,', 60, finalY);
-        doc.text('Staf Komite Mutu & Manajemen Risiko', 60, finalY + 14);
+        doc.text(settings?.jabatan_penandatangan_kiri || 'Penanggungjawab Unit', 60, finalY + 14);
         doc.line(60, finalY + 65, 200, finalY + 65);
-        doc.text('Pengelola Manajemen Risiko', 60, finalY + 78);
+        doc.setFont('helvetica', 'bold');
+        doc.text(settings?.nama_penandatangan_kiri || 'Penanggungjawab Unit Kerja', 60, finalY + 78);
+        doc.setFont('helvetica', 'normal');
+
         doc.text('Disetujui oleh,', pageWidth - 200, finalY);
         doc.setFont('helvetica', 'bold');
-        doc.text(settings?.kepala_rs || 'Pimpinan Rumah Sakit', pageWidth - 200, finalY + 14);
+        doc.text(settings?.kepala_rs || 'Kepala / Direktur RS', pageWidth - 200, finalY + 14);
         doc.line(pageWidth - 200, finalY + 65, pageWidth - 60, finalY + 65);
         doc.setFont('helvetica', 'normal');
         doc.text(`NIP: ${settings?.nip_kepala || '-'}`, pageWidth - 200, finalY + 78);
@@ -711,24 +1079,24 @@ export default function ResidualRiskPage() {
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-8">
                 <TopActionBar
                     filters={
-                        <div className="flex flex-wrap gap-3 items-center">
-                            <FilterBar
-                                searchValue={search} onSearchChange={setSearch} searchPlaceholder="Cari risiko..."
-                                yearValue={year} onYearChange={setYear}
-                            />
-                            <select className="form-input text-sm h-9" value={unitFilter} onChange={e => setUnitFilter(e.target.value)}>
-                                <option value="">Semua Unit</option>
-                                {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                            </select>
-                        </div>
+                        <FilterBar
+                            searchValue={search} onSearchChange={setSearch} searchPlaceholder="Cari risiko..."
+                            yearValue={year} onYearChange={setYear}
+                            extraFilters={
+                                <select className="filter-select w-44" value={unitFilter} onChange={e => setUnitFilter(e.target.value)} title="Filter Unit Kerja">
+                                    <option value="">Semua Unit Kerja</option>
+                                    {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                                </select>
+                            }
+                        />
                     }
                     actions={
                         <>
-                            <button className="btn-secondary border-primary/20 text-primary hover:bg-primary/5 flex items-center gap-2" onClick={handleExportPDF}>
-                                <FileText size={15} /><span>Laporan</span>
+                            <button className="btn-secondary btn-sm border-primary/20 text-primary hover:bg-primary/5 flex items-center gap-2" onClick={handleExportPDF}>
+                                <FileText size={14} /><span>Laporan</span>
                             </button>
-                            <button className="btn-primary flex items-center gap-2" onClick={() => { setEditRow(null); setShowModal(true); }}>
-                                {saving ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
+                            <button className="btn-primary btn-sm flex items-center gap-2" onClick={() => { setEditRow(null); setShowModal(true); }}>
+                                {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
                                 <span>Tambah Data</span>
                             </button>
                         </>

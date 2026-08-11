@@ -87,6 +87,12 @@ h6 {
   background-color: #e2e8f0;
 }
 
+.btn-sm {
+  padding: 5px 12px !important;
+  font-size: 13px !important;
+  border-radius: 6px !important;
+}
+
 .btn-success {
   display: inline-flex;
   align-items: center;
@@ -329,6 +335,27 @@ h6 {
 
 .form-input:focus {
   border-color: #137fec;
+  box-shadow: 0 0 0 3px rgb(19 127 236 / 0.12);
+}
+
+.filter-select {
+  height: 38px;
+  padding: 6px 12px;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #334155;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+}
+
+.filter-select:focus {
+  border-color: #137fec;
+  background-color: #ffffff;
   box-shadow: 0 0 0 3px rgb(19 127 236 / 0.12);
 }
 

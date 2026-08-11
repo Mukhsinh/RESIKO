@@ -19,6 +19,8 @@ interface AppSettings {
     kepala_rs: string;
     nip_kepala: string;
     footer: string;
+    jabatan_penandatangan_kiri: string;
+    nama_penandatangan_kiri: string;
 }
 
 const DEFAULT: AppSettings = {
@@ -35,6 +37,8 @@ const DEFAULT: AppSettings = {
     kepala_rs: '',
     nip_kepala: '',
     footer: '',
+    jabatan_penandatangan_kiri: 'Penanggungjawab Unit',
+    nama_penandatangan_kiri: 'Penanggungjawab Unit Kerja',
 };
 
 export default function PengaturanAplikasiPage() {
@@ -62,6 +66,8 @@ export default function PengaturanAplikasiPage() {
                     kepala_rs: data.kepala_rs ?? '',
                     nip_kepala: data.nip_kepala ?? '',
                     footer: data.footer ?? '',
+                    jabatan_penandatangan_kiri: data.jabatan_penandatangan_kiri || 'Penanggungjawab Unit',
+                    nama_penandatangan_kiri: data.nama_penandatangan_kiri || 'Penanggungjawab Unit Kerja',
                 });
             }
             setLoading(false);
@@ -167,14 +173,64 @@ export default function PengaturanAplikasiPage() {
                     <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wide mb-5 flex items-center gap-2">
                         <User size={16} className="text-indigo-500" /> Pejabat Penandatangan Laporan
                     </h2>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="form-label">Nama Kepala / Direktur RS</label>
-                            <input type="text" className="form-input w-full" value={form.kepala_rs} onChange={e => f('kepala_rs', e.target.value)} placeholder="dr. Ahmad Santoso, Sp.B, M.Kes" />
+                    <div className="space-y-4">
+                        <div className="bg-slate-50/70 p-4 rounded-xl border border-slate-100">
+                            <p className="text-xs font-bold text-slate-700 mb-3 flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                                Penandatangan Sebelah Kiri (Pembuat / Penanggungjawab Laporan)
+                            </p>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="form-label">Jabatan Penandatangan Kiri *</label>
+                                    <input
+                                        type="text"
+                                        className="form-input w-full bg-white"
+                                        value={form.jabatan_penandatangan_kiri}
+                                        onChange={e => f('jabatan_penandatangan_kiri', e.target.value)}
+                                        placeholder="Penanggungjawab Unit"
+                                    />
+                                    <p className="text-[10px] text-slate-400 mt-1">Default: &quot;Penanggungjawab Unit&quot;</p>
+                                </div>
+                                <div>
+                                    <label className="form-label">Nama / Keterangan Penandatangan Kiri</label>
+                                    <input
+                                        type="text"
+                                        className="form-input w-full bg-white"
+                                        value={form.nama_penandatangan_kiri}
+                                        onChange={e => f('nama_penandatangan_kiri', e.target.value)}
+                                        placeholder="Penanggungjawab Unit Kerja"
+                                    />
+                                </div>
+                            </div>
                         </div>
-                        <div>
-                            <label className="form-label">NIP / NIK Pejabat</label>
-                            <input type="text" className="form-input w-full" value={form.nip_kepala} onChange={e => f('nip_kepala', e.target.value)} placeholder="196501011990031001" />
+
+                        <div className="bg-slate-50/70 p-4 rounded-xl border border-slate-100">
+                            <p className="text-xs font-bold text-slate-700 mb-3 flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                Penandatangan Sebelah Kanan (Atasan / Direksi Pimpinan RS)
+                            </p>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="form-label">Nama Kepala / Direktur RS *</label>
+                                    <input
+                                        type="text"
+                                        className="form-input w-full bg-white"
+                                        value={form.kepala_rs}
+                                        onChange={e => f('kepala_rs', e.target.value)}
+                                        placeholder="dr. Ahmad Santoso, Sp.B, M.Kes"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="form-label">NIP / NIK Kepala RS *</label>
+                                    <input
+                                        type="text"
+                                        className="form-input w-full bg-white"
+                                        value={form.nip_kepala}
+                                        onChange={e => f('nip_kepala', e.target.value)}
+                                        placeholder="196501011990031001"
+                                    />
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

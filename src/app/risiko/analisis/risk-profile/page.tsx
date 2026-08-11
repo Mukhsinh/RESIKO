@@ -287,9 +287,9 @@ function RiskModal({ row, onClose, onSave, units, riskInputs, saving }: {
                 </div>
 
                 <div className="flex justify-end gap-3 px-6 pb-6">
-                    <button onClick={onClose} className="btn-secondary">Batal</button>
-                    <button onClick={() => onSave(form)} disabled={saving} className="btn-primary flex items-center gap-2">
-                        {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} Simpan Data
+                    <button onClick={onClose} className="btn-secondary btn-sm">Batal</button>
+                    <button onClick={() => onSave(form)} disabled={saving} className="btn-primary btn-sm flex items-center gap-2">
+                        {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Simpan Data
                     </button>
                 </div>
             </div>
@@ -353,7 +353,7 @@ function ViewModal({ row, onClose }: { row: RiskRow; onClose: () => void }) {
                     <div><span className="text-xs text-slate-400">Status</span><div className="mt-1"><StatusBadge status={row.status} /></div></div>
                 </div>
                 <div className="flex justify-end px-6 pb-6">
-                    <button onClick={onClose} className="btn-secondary">Tutup</button>
+                    <button onClick={onClose} className="btn-secondary btn-sm">Tutup</button>
                 </div>
             </div>
         </div>
@@ -495,7 +495,7 @@ export default function RiskProfilePage() {
         const pageHeight = doc.internal.pageSize.getHeight();
 
         const hexToRgb = (hex: string): [number, number, number] => {
-            const def: [number, number, number] = [19, 127, 236]; // Blue primary
+            const def: [number, number, number] = [19, 127, 236];
             if (!hex) return def;
             const h = hex.replace('#', '');
             if (h.length !== 6) return def;
@@ -509,185 +509,504 @@ export default function RiskProfilePage() {
         const addHeader = (d: jsPDF, title: string) => {
             d.setDrawColor(226, 232, 240);
             d.setLineWidth(1);
-            d.line(40, 55, pageWidth - 40, 55);
+            d.line(40, 50, pageWidth - 40, 50);
 
             d.setTextColor(71, 85, 105);
             d.setFontSize(8);
             d.setFont('helvetica', 'bold');
-            d.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), 40, 45);
+            d.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), 40, 40);
 
             d.setTextColor(148, 163, 184);
             d.setFont('helvetica', 'normal');
-            d.text(title, pageWidth - 40, 45, { align: 'right' });
+            d.text(title, pageWidth - 40, 40, { align: 'right' });
         };
 
         const addFooter = (d: jsPDF) => {
             const totalPages = d.getNumberOfPages();
             for (let i = 1; i <= totalPages; i++) {
                 d.setPage(i);
-                if (i === 1) continue; // skip cover
+                if (i === 1) continue;
                 d.setTextColor(148, 163, 184);
                 d.setFontSize(8);
                 d.setFont('helvetica', 'normal');
-                d.text(settings?.footer || 'Laporan Internal Rumah Sakit', 40, pageHeight - 30);
-                d.text(`Halaman ${i - 1} dari ${totalPages - 1}`, pageWidth - 40, pageHeight - 30, { align: 'right' });
+                d.text(settings?.footer || 'Laporan Profil Risiko - Rahasia & Internal RS', 40, pageHeight - 25);
+                d.text(`Halaman ${i - 1} dari ${totalPages - 1}`, pageWidth - 40, pageHeight - 25, { align: 'right' });
                 d.setDrawColor(226, 232, 240);
                 d.setLineWidth(0.75);
-                d.line(40, pageHeight - 40, pageWidth - 40, pageHeight - 40);
+                d.line(40, pageHeight - 35, pageWidth - 40, pageHeight - 35);
             }
         };
 
         const drawKopSurat = (d: jsPDF) => {
             d.setDrawColor(30, 41, 59);
             d.setLineWidth(1.5);
-            d.line(40, 110, pageWidth - 40, 110);
+            d.line(40, 105, pageWidth - 40, 105);
             d.setDrawColor(30, 41, 59);
             d.setLineWidth(0.5);
-            d.line(40, 114, pageWidth - 40, 114);
+            d.line(40, 109, pageWidth - 40, 109);
 
             d.setTextColor(30, 41, 59);
             d.setFont('helvetica', 'bold');
             d.setFontSize(14);
-            d.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), 40, 50);
+            d.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), 40, 45);
 
             d.setFont('helvetica', 'normal');
-            d.setFontSize(9);
+            d.setFontSize(8.5);
             d.setTextColor(71, 85, 105);
-            d.text(settings?.alamat || '', 40, 68);
-            d.text(`Kota: ${settings?.kota || '-'} | Telp: ${settings?.telepon || '-'} | Email: ${settings?.email || '-'} | Web: ${settings?.website || '-'}`, 40, 84);
+            d.text(settings?.alamat || '', 40, 62);
+            d.text(`Kota: ${settings?.kota || '-'} | Telp: ${settings?.telepon || '-'} | Email: ${settings?.email || '-'} | Web: ${settings?.website || '-'}`, 40, 76);
 
             if (settings?.tagline) {
-                d.setFont('helvetica', 'oblique');
+                d.setFont('helvetica', 'italic');
                 d.setFontSize(8);
-                d.text(`"${settings.tagline}"`, 40, 98);
+                d.text(`"${settings.tagline}"`, 40, 92);
             }
         };
 
-        // Cover Page
+        // Track page index for TOC
+        let pSummary = 3;
+        let pHeatmap = 4;
+        let pChart = 5;
+        let pTable = 6;
+
+        // --- PAGE 1: COVER PAGE ---
         doc.setFillColor(rgbColor[0], rgbColor[1], rgbColor[2]);
         doc.rect(0, 0, pageWidth, pageHeight, 'F');
         doc.setTextColor(255, 255, 255);
 
         doc.setFontSize(22);
         doc.setFont('helvetica', 'bold');
-        doc.text('LAPORAN PROFIL RISIKO', pageWidth / 2, pageHeight / 2 - 60, { align: 'center' });
-
-        doc.setFontSize(16);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`Tahun: ${year || 'Semua'}`, pageWidth / 2, pageHeight / 2, { align: 'center' });
+        doc.text('LAPORAN PROFIL RISIKO', pageWidth / 2, pageHeight / 2 - 50, { align: 'center' });
 
         doc.setFontSize(12);
-        doc.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), pageWidth / 2, pageHeight / 2 + 50, { align: 'center' });
+        doc.setFont('helvetica', 'normal');
+        doc.text('Analisis Profil, Matriks Heatmap, dan Peta Sebaran Risiko Unit Kerja', pageWidth / 2, pageHeight / 2 - 25, { align: 'center' });
 
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Tahun Anggaran: ${year || 'Semua'}`, pageWidth / 2, pageHeight / 2 + 20, { align: 'center' });
+
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'normal');
+        doc.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), pageWidth / 2, pageHeight / 2 + 60, { align: 'center' });
+
+        doc.setFontSize(8.5);
+        doc.text(`Dicetak Pada: ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}`, pageWidth / 2, pageHeight - 50, { align: 'center' });
+
+        // --- PAGE 2: TABLE OF CONTENTS ---
         doc.addPage();
+        const tocPageNum = doc.getCurrentPageInfo().pageNumber;
 
-        // TOC Page
-        let tocPageNum = doc.getCurrentPageInfo().pageNumber;
-        doc.addPage(); // skip for TOC
-
-        let contentPageStart = doc.getCurrentPageInfo().pageNumber;
-
-        // Draw KOP Surat on first content page
+        // --- PAGE 3: SECTION A - EXECUTIVE SUMMARY & EXPLANATIONS ---
+        doc.addPage();
+        pSummary = doc.getCurrentPageInfo().pageNumber;
         drawKopSurat(doc);
 
         doc.setTextColor(30, 41, 59);
         doc.setFontSize(13);
         doc.setFont('helvetica', 'bold');
-        doc.text('A. Rekapitulasi Daftar Profil Risiko Internal', 40, 140);
+        doc.text('A. Ringkasan Eksekutif & Keterangan Penjelasan Profil Risiko', 40, 132);
 
-        let finalY = 160;
+        // Summary Metric Cards Box
+        let boxY = 145;
+        const boxW = (pageWidth - 110) / 4;
+        const metrics = [
+            { label: 'Total Risiko', val: stats.total, color: [241, 245, 249], textCol: [30, 41, 59] },
+            { label: 'Sangat Tinggi (>=15)', val: stats.tinggi, color: [254, 226, 226], textCol: [190, 18, 60] },
+            { label: 'Sedang (5-14)', val: stats.sedang, color: [254, 243, 199], textCol: [146, 64, 14] },
+            { label: 'Rendah (<5)', val: stats.rendah, color: [209, 250, 229], textCol: [6, 95, 70] },
+        ];
+
+        metrics.forEach((m, idx) => {
+            const bx = 40 + idx * (boxW + 10);
+            doc.setFillColor(m.color[0], m.color[1], m.color[2]);
+            doc.roundedRect(bx, boxY, boxW, 45, 6, 6, 'F');
+            doc.setDrawColor(226, 232, 240);
+            doc.roundedRect(bx, boxY, boxW, 45, 6, 6, 'S');
+
+            doc.setFontSize(7.5);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(m.textCol[0], m.textCol[1], m.textCol[2]);
+            doc.text(m.label, bx + boxW / 2, boxY + 16, { align: 'center' });
+
+            doc.setFontSize(14);
+            doc.setFont('helvetica', 'bold');
+            doc.text(String(m.val), bx + boxW / 2, boxY + 36, { align: 'center' });
+        });
+
+        // Detailed Explanation Text Box
+        let expY = 205;
+        doc.setFillColor(248, 250, 252);
+        doc.roundedRect(40, expY, pageWidth - 80, 280, 8, 8, 'F');
+        doc.setDrawColor(226, 232, 240);
+        doc.roundedRect(40, expY, pageWidth - 80, 280, 8, 8, 'S');
+
+        doc.setTextColor(30, 41, 59);
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Keterangan Penjelasan dan Metodologi Penilaian Risiko:', 52, expY + 20);
+
+        doc.setFontSize(8.5);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(51, 65, 85);
+
+        const expLines = [
+            '1. Konsep Profil Risiko:',
+            '   Profil Risiko memberikan gambaran menyeluruh terhadap risiko-risiko di unit kerja, mencakup Inherent Risk',
+            '   (skor murni sebelum mitigasi) dan Residual Risk (skor tersisa setelah langkah mitigasi dilaksanakan).',
+            '',
+            '2. Metodologi Matriks 5x5 (Probabilitas x Dampak):',
+            '   - Probabilitas (Frekuensi): Skala 1 (Sangat Jarang) sampai Skala 5 (Sangat Sering).',
+            '   - Dampak (Konsekuensi): Skala 1 (Sangat Ringan) sampai Skala 5 (Sangat Berat / Bencana).',
+            '   - Skor Risiko dihitung dari perkalian Probabilitas x Dampak (Rentang Nilai 1 s/d 25).',
+            '',
+            '3. Kategori Level Risiko:',
+            '   - Sangat Tinggi / Ekstrem (Skor 15-25): Risiko kritis, membutuhkan pengawasan langsung pimpinan/direksi.',
+            '   - Tinggi (Skor 10-14): Risiko signifikan, memerlukan tindakan korektif dan mitigasi terencana.',
+            '   - Sedang (Skor 5-9): Risiko moderat, dikelola melalui SOP dan pengawasan rutin unit.',
+            '   - Rendah (Skor 1-4): Risiko ringan, dapat diterima dan ditoleransi (within appetite).',
+            '',
+            '4. Batas Toleransi / Risk Appetite RS:',
+            '   Selera risiko standar ditetapkan pada skor maksimal 6. Risiko dengan skor inherent di atas 6 wajib',
+            '   dilakukan penanganan dan mitigasi terukur hingga mencapai target skor residual risk.'
+        ];
+
+        let lineY = expY + 36;
+        expLines.forEach(txt => {
+            if (txt.trim() === '') {
+                lineY += 6;
+            } else {
+                const wrapped = doc.splitTextToSize(txt, pageWidth - 104);
+                doc.text(wrapped, 52, lineY);
+                lineY += wrapped.length * 11;
+            }
+        });
+
+        // --- PAGE 4: SECTION B - HEATMAP MATRIX 5x5 ---
+        doc.addPage();
+        pHeatmap = doc.getCurrentPageInfo().pageNumber;
+        addHeader(doc, 'Visualisasi Heatmap Risiko');
+
+        doc.setTextColor(30, 41, 59);
+        doc.setFontSize(13);
+        doc.setFont('helvetica', 'bold');
+        doc.text('B. Visualisasi Matriks Heatmap Risiko 5x5 (Inherent vs Residual)', 40, 75);
+
+        doc.setFontSize(8.5);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(100, 116, 139);
+        doc.text('Peta sebaran posisi risiko sebelum (I) dan sesudah (R) mitigasi pada matriks 5x5.', 40, 88);
+
+        // Draw 5x5 Heatmap Matrix
+        const gridStartX = 90;
+        const gridStartY = 115;
+        const cellW = 82;
+        const cellH = 46;
+
+        // Axis Titles
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(71, 85, 105);
+        doc.text('P R O B A B I L I T A S', 30, gridStartY + (cellH * 2.5), { angle: 90, align: 'center' });
+        doc.text('D A M P A K', gridStartX + (cellW * 2.5), gridStartY + (cellH * 5) + 32, { align: 'center' });
+
+        const getMatrixCellColor = (p: number, d: number): [number, number, number] => {
+            const sc = p * d;
+            if (sc >= 15) return [254, 202, 202]; // Red
+            if (sc >= 10) return [254, 215, 170]; // Amber
+            if (sc >= 5) return [254, 243, 199];  // Yellow
+            return [209, 250, 229];                  // Green
+        };
+
+        for (let p = 5; p >= 1; p--) {
+            const rowIndex = 5 - p;
+            const cy = gridStartY + rowIndex * cellH;
+
+            // Y-axis label
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(71, 85, 105);
+            doc.text(`P${p}`, gridStartX - 15, cy + cellH / 2 + 3);
+
+            for (let d = 1; d <= 5; d++) {
+                const colIndex = d - 1;
+                const cx = gridStartX + colIndex * cellW;
+
+                // X-axis label (only on bottom row)
+                if (p === 1) {
+                    doc.text(`D${d}`, cx + cellW / 2, gridStartY + 5 * cellH + 16, { align: 'center' });
+                }
+
+                // Cell fill
+                const bg = getMatrixCellColor(p, d);
+                doc.setFillColor(bg[0], bg[1], bg[2]);
+                doc.rect(cx, cy, cellW, cellH, 'F');
+                doc.setDrawColor(255, 255, 255);
+                doc.setLineWidth(1.5);
+                doc.rect(cx, cy, cellW, cellH, 'S');
+
+                // Score text in cell top right
+                doc.setFontSize(7);
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(148, 163, 184);
+                doc.text(`${p * d}`, cx + cellW - 5, cy + 10, { align: 'right' });
+
+                // Count items in cell
+                const inhCount = filtered.filter(r => r.probabilitas === p && r.dampak === d).length;
+                const resCount = filtered.filter(r => {
+                    const pr = r.p_residual ?? Math.ceil(r.probabilitas * 0.5);
+                    const dr = r.d_residual ?? Math.ceil(r.dampak * 0.8);
+                    return pr === p && dr === d;
+                }).length;
+
+                // Render Inherent Pill
+                if (inhCount > 0) {
+                    doc.setFillColor(225, 29, 72);
+                    doc.roundedRect(cx + 6, cy + 16, cellW / 2 - 8, 18, 4, 4, 'F');
+                    doc.setFontSize(7.5);
+                    doc.setFont('helvetica', 'bold');
+                    doc.setTextColor(255, 255, 255);
+                    doc.text(`I: ${inhCount}`, cx + 6 + (cellW / 4 - 4), cy + 28, { align: 'center' });
+                }
+
+                // Render Residual Pill
+                if (resCount > 0) {
+                    doc.setFillColor(5, 150, 105);
+                    doc.roundedRect(cx + cellW / 2 + 2, cy + 16, cellW / 2 - 8, 18, 4, 4, 'F');
+                    doc.setFontSize(7.5);
+                    doc.setFont('helvetica', 'bold');
+                    doc.setTextColor(255, 255, 255);
+                    doc.text(`R: ${resCount}`, cx + cellW / 2 + 2 + (cellW / 4 - 4), cy + 28, { align: 'center' });
+                }
+            }
+        }
+
+        // Legend for Heatmap
+        let legY = gridStartY + 5 * cellH + 45;
+        doc.setFillColor(248, 250, 252);
+        doc.roundedRect(40, legY, pageWidth - 80, 50, 6, 6, 'F');
+        doc.setDrawColor(226, 232, 240);
+        doc.roundedRect(40, legY, pageWidth - 80, 50, 6, 6, 'S');
+
+        doc.setFontSize(8.5);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(51, 65, 85);
+        doc.text('Keterangan Pin / Badge Heatmap:', 52, legY + 18);
+
+        // Inherent Badge Legend
+        doc.setFillColor(225, 29, 72);
+        doc.roundedRect(52, legY + 26, 28, 14, 3, 3, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(7.5);
+        doc.text('I: n', 66, legY + 36, { align: 'center' });
+        doc.setTextColor(51, 65, 85);
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.text('Inherent Risk (Kondisi Awal)', 86, legY + 36);
+
+        // Residual Badge Legend
+        doc.setFillColor(5, 150, 105);
+        doc.roundedRect(210, legY + 26, 28, 14, 3, 3, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(7.5);
+        doc.setFont('helvetica', 'bold');
+        doc.text('R: n', 224, legY + 36, { align: 'center' });
+        doc.setTextColor(51, 65, 85);
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.text('Residual Risk (Pasca Mitigasi)', 244, legY + 36);
+
+        // --- PAGE 5: SECTION C - UNIT DISTRIBUTION CHART ---
+        doc.addPage();
+        pChart = doc.getCurrentPageInfo().pageNumber;
+        addHeader(doc, 'Grafik Profil Risiko Unit Kerja');
+
+        doc.setTextColor(30, 41, 59);
+        doc.setFontSize(13);
+        doc.setFont('helvetica', 'bold');
+        doc.text('C. Grafik Distribusi & Rata-rata Skor Risiko per Unit Kerja', 40, 75);
+
+        // Draw Bar Chart Vector Graphics
+        const chartX = 60;
+        const chartY = 110;
+        const chartW = pageWidth - 120;
+        const chartH = 220;
+
+        doc.setFillColor(255, 255, 255);
+        doc.roundedRect(40, chartY - 15, pageWidth - 80, chartH + 75, 8, 8, 'F');
+        doc.setDrawColor(226, 232, 240);
+        doc.roundedRect(40, chartY - 15, pageWidth - 80, chartH + 75, 8, 8, 'S');
+
+        const uData = unitScoreData.slice(0, 10);
+        const maxVal = Math.max(...uData.map(d => Math.max(d['Total Risiko'], d['Rata-rata Skor'])), 10);
+
+        // Gridlines
+        const gridSteps = 5;
+        for (let i = 0; i <= gridSteps; i++) {
+            const gy = chartY + chartH - (i * (chartH / gridSteps));
+            const valLabel = Math.round((maxVal / gridSteps) * i);
+            doc.setDrawColor(241, 245, 249);
+            doc.line(chartX, gy, chartX + chartW, gy);
+
+            doc.setFontSize(7.5);
+            doc.setTextColor(148, 163, 184);
+            doc.text(String(valLabel), chartX - 10, gy + 3, { align: 'right' });
+        }
+
+        // Bars
+        const groupW = chartW / Math.max(uData.length, 1);
+        const barW = Math.min(groupW * 0.35, 20);
+
+        uData.forEach((item, idx) => {
+            const gx = chartX + idx * groupW + groupW / 2;
+
+            // Total Risiko Bar (Blue)
+            const hTotal = (item['Total Risiko'] / maxVal) * chartH;
+            const yTotal = chartY + chartH - hTotal;
+            doc.setFillColor(59, 130, 246);
+            doc.roundedRect(gx - barW - 2, yTotal, barW, hTotal, 2, 2, 'F');
+            if (item['Total Risiko'] > 0) {
+                doc.setFontSize(7);
+                doc.setTextColor(59, 130, 246);
+                doc.text(String(item['Total Risiko']), gx - barW / 2 - 2, yTotal - 4, { align: 'center' });
+            }
+
+            // Avg Score Bar (Amber)
+            const hAvg = (item['Rata-rata Skor'] / maxVal) * chartH;
+            const yAvg = chartY + chartH - hAvg;
+            doc.setFillColor(245, 158, 11);
+            doc.roundedRect(gx + 2, yAvg, barW, hAvg, 2, 2, 'F');
+            if (item['Rata-rata Skor'] > 0) {
+                doc.setFontSize(7);
+                doc.setTextColor(245, 158, 11);
+                doc.text(String(item['Rata-rata Skor']), gx + barW / 2 + 2, yAvg - 4, { align: 'center' });
+            }
+
+            // Unit Name
+            doc.setFontSize(7.5);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(71, 85, 105);
+            const uName = item.name.length > 10 ? item.name.substring(0, 10) + '…' : item.name;
+            doc.text(uName, gx, chartY + chartH + 16, { align: 'center' });
+        });
+
+        // Chart Legend
+        const legBarY = chartY + chartH + 38;
+        doc.setFillColor(59, 130, 246);
+        doc.rect(pageWidth / 2 - 110, legBarY, 12, 12, 'F');
+        doc.setFontSize(8);
+        doc.setTextColor(51, 65, 85);
+        doc.text('Total Risiko Unit', pageWidth / 2 - 92, legBarY + 9);
+
+        doc.setFillColor(245, 158, 11);
+        doc.rect(pageWidth / 2 + 20, legBarY, 12, 12, 'F');
+        doc.text('Rata-rata Skor Inherent', pageWidth / 2 + 38, legBarY + 9);
+
+        // --- PAGE 6+: SECTION D - REKAPITULASI TABEL & SIGNATURE ---
+        doc.addPage();
+        pTable = doc.getCurrentPageInfo().pageNumber;
+        addHeader(doc, 'Daftar Tabel Profil Risiko');
+
+        doc.setTextColor(30, 41, 59);
+        doc.setFontSize(13);
+        doc.setFont('helvetica', 'bold');
+        doc.text('D. Rekapitulasi Data Profil Risiko', 40, 75);
 
         let rowIdx = 1;
         const tableData = filtered.map(item => {
             const skor_res = (item.p_residual ?? Math.ceil(item.probabilitas * 0.5)) * (item.d_residual ?? Math.ceil(item.dampak * 0.8));
-
-            let inherentStr = `Skor: ${item.skor_risiko} (P:${item.probabilitas} D:${item.dampak})`;
-            let residualStr = `Skor: ${skor_res} (P:${item.p_residual ?? '-'} D:${item.d_residual ?? '-'})`;
-
             return [
                 rowIdx++,
                 item.kode_risiko || '-',
                 (item as any).unit_kerja?.nama_unit || item.master_work_units?.name || '-',
                 item.identifikasi_risiko || '-',
-                inherentStr,
-                item.mitigasi || '-',
-                residualStr,
+                `Skor: ${item.skor_risiko}\n(P:${item.probabilitas} D:${item.dampak})`,
+                item.mitigasi || item.rencana_penanganan || '-',
+                `Skor: ${skor_res}\n(P:${item.p_residual ?? '-'} D:${item.d_residual ?? '-'})`,
                 item.status || 'Open'
             ];
         });
 
         autoTable(doc, {
-            startY: finalY,
-            head: [['No', 'Kode', 'Unit Kerja', 'Pernyataan Risiko', 'Inherent Risk', 'Tindakan Mitigasi', 'Residual Risk', 'Status']],
+            startY: 90,
+            head: [['No', 'Kode', 'Unit Kerja', 'Pernyataan Risiko', 'Inherent', 'Tindakan Mitigasi', 'Residual', 'Status']],
             body: tableData,
             theme: 'grid',
             headStyles: { fillColor: rgbColor, fontSize: 8, fontStyle: 'bold' },
-            styles: { fontSize: 8, cellPadding: 4 },
+            styles: { fontSize: 7.5, cellPadding: 4, valign: 'top' },
             columnStyles: {
                 0: { cellWidth: 20, halign: 'center' },
-                1: { cellWidth: 40 },
-                2: { cellWidth: 75 },
-                3: { cellWidth: 110 },
-                4: { cellWidth: 75 },
-                5: { cellWidth: 85 },
-                6: { cellWidth: 75 },
+                1: { cellWidth: 45 },
+                2: { cellWidth: 70 },
+                3: { cellWidth: 125 },
+                4: { cellWidth: 60, halign: 'center' },
+                5: { cellWidth: 110 },
+                6: { cellWidth: 55, halign: 'center' },
                 7: { cellWidth: 35, halign: 'center' }
             },
             margin: { left: 40, right: 40 },
-            didDrawPage: (data) => {
-                const currentPage = doc.getCurrentPageInfo().pageNumber;
-                if (currentPage > contentPageStart) {
-                    addHeader(doc, 'Laporan Profil Risiko');
-                }
+            didDrawPage: () => {
+                addHeader(doc, 'Laporan Profil Risiko');
             }
         });
-        finalY = (doc as any).lastAutoTable.finalY + 20;
 
-        // Add TOC Content
-        doc.setPage(tocPageNum);
-        addHeader(doc, 'Daftar Isi');
-        doc.setTextColor(30, 41, 59);
-        doc.setFontSize(15);
-        doc.setFont('helvetica', 'bold');
-        doc.text('DAFTAR ISI LAPORAN', 40, 100);
-
-        doc.setDrawColor(226, 232, 240);
-        doc.setLineWidth(1);
-        doc.line(40, 112, pageWidth - 40, 112);
-
-        doc.setFontSize(10.5);
-        doc.setFont('helvetica', 'normal');
-
-        doc.text('1. Rekapitulasi Daftar Profil Risiko Unit Kerja', 40, 140);
-        doc.text(`${contentPageStart - 1}`, pageWidth - 40, 140, { align: 'right' });
-
-        doc.text('2. Lembar Tanda Tangan Pengesahan Laporan', 40, 160);
-        const lastPage = doc.getNumberOfPages();
-        doc.text(`${lastPage - 1}`, pageWidth - 40, 160, { align: 'right' });
-
-        // Go to last page for signature block
-        doc.setPage(lastPage);
-        if (finalY > pageHeight - 150) {
+        let finalY = (doc as any).lastAutoTable.finalY + 25;
+        if (finalY > pageHeight - 140) {
             doc.addPage();
             finalY = 70;
-        } else {
-            finalY += 15;
         }
 
-        doc.setFontSize(9.5);
+        // Section E: Signature Block
+        doc.setFontSize(9);
         doc.setTextColor(51, 65, 85);
         doc.setFont('helvetica', 'normal');
         doc.text('Disiapkan oleh,', 60, finalY);
-        doc.text('Staf Komite Mutu & Manajemen Risiko', 60, finalY + 14);
-        doc.line(60, finalY + 65, 200, finalY + 65);
-        doc.text('Pengelola Manajemen Risiko', 60, finalY + 78);
+        doc.text(settings?.jabatan_penandatangan_kiri || 'Penanggungjawab Unit', 60, finalY + 14);
+        doc.line(60, finalY + 60, 200, finalY + 60);
+        doc.text(settings?.nama_penandatangan_kiri || 'Penanggungjawab Unit Kerja', 60, finalY + 74);
 
         doc.text('Disetujui oleh,', pageWidth - 200, finalY);
         doc.setFont('helvetica', 'bold');
-        doc.text(settings?.kepala_rs || 'Pimpinan Rumah Sakit', pageWidth - 200, finalY + 14);
-        doc.line(pageWidth - 200, finalY + 65, pageWidth - 60, finalY + 65);
+        doc.text(settings?.kepala_rs || 'Kepala / Direktur RS', pageWidth - 200, finalY + 14);
+        doc.line(pageWidth - 200, finalY + 60, pageWidth - 60, finalY + 60);
         doc.setFont('helvetica', 'normal');
-        doc.text(`NIP: ${settings?.nip_kepala || '-'}`, pageWidth - 200, finalY + 78);
+        doc.text(`NIP: ${settings?.nip_kepala || '-'}`, pageWidth - 200, finalY + 74);
+
+        // Fill TOC Content on Page 2
+        doc.setPage(tocPageNum);
+        addHeader(doc, 'Daftar Isi');
+
+        doc.setTextColor(30, 41, 59);
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text('DAFTAR ISI LAPORAN PROFIL RISIKO', 40, 85);
+
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(1);
+        doc.line(40, 95, pageWidth - 40, 95);
+
+        const tocItems = [
+            { title: 'A. Ringkasan Eksekutif & Keterangan Penjelasan Profil Risiko', page: pSummary },
+            { title: 'B. Visualisasi Matriks Heatmap Risiko 5x5 (Inherent vs Residual)', page: pHeatmap },
+            { title: 'C. Grafik Distribusi & Rata-rata Skor Risiko per Unit Kerja', page: pChart },
+            { title: 'D. Rekapitulasi Data Tabel Profil Risiko Unit Kerja', page: pTable },
+            { title: 'E. Lembar Pengesahan Laporan', page: doc.getNumberOfPages() },
+        ];
+
+        let tocY = 120;
+        doc.setFontSize(9.5);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(51, 65, 85);
+
+        tocItems.forEach(item => {
+            doc.text(item.title, 40, tocY);
+            doc.setFont('helvetica', 'bold');
+            doc.text(`Halaman ${item.page}`, pageWidth - 40, tocY, { align: 'right' });
+            doc.setFont('helvetica', 'normal');
+            doc.setDrawColor(226, 232, 240);
+            doc.line(40, tocY + 8, pageWidth - 40, tocY + 8);
+            tocY += 28;
+        });
 
         addFooter(doc);
         doc.save(`Laporan_Risk_Profile_${year || 'Semua'}.pdf`);
@@ -749,7 +1068,7 @@ export default function RiskProfilePage() {
                     </h3>
                     <div className="h-64 w-full">
                         {unitScoreData.length > 0 ? (
-                            <ResponsiveContainer width="100%" height="100%">
+                            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                                 <BarChart data={unitScoreData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748B' }} dy={8} />
@@ -779,24 +1098,24 @@ export default function RiskProfilePage() {
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-8">
                 <TopActionBar
                     filters={
-                        <div className="flex flex-wrap gap-3 items-center">
-                            <FilterBar
-                                searchValue={search} onSearchChange={setSearch} searchPlaceholder="Cari identifikasi risiko..."
-                                yearValue={year} onYearChange={setYear}
-                            />
-                            <select className="form-input text-sm h-9" value={unitFilter} onChange={e => setUnitFilter(e.target.value)}>
-                                <option value="">Semua Unit</option>
-                                {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                            </select>
-                        </div>
+                        <FilterBar
+                            searchValue={search} onSearchChange={setSearch} searchPlaceholder="Cari identifikasi risiko..."
+                            yearValue={year} onYearChange={setYear}
+                            extraFilters={
+                                <select className="filter-select w-44" value={unitFilter} onChange={e => setUnitFilter(e.target.value)} title="Filter Unit Kerja">
+                                    <option value="">Semua Unit Kerja</option>
+                                    {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                                </select>
+                            }
+                        />
                     }
                     actions={
                         <>
-                            <button className="btn-secondary"><Download size={15} /><span className="hidden sm:inline">Template</span></button>
-                            <button className="btn-secondary"><Upload size={15} /><span className="hidden sm:inline">Import</span></button>
-                            <button className="btn-secondary border-primary/20 text-primary hover:bg-primary/5" onClick={handleExportPDF}><FileText size={15} /><span className="hidden sm:inline">Laporan</span></button>
-                            <button className="btn-primary" onClick={() => { setEditRow(null); setShowModal(true); }}>
-                                {saving ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
+                            <button className="btn-secondary btn-sm"><Download size={14} /><span className="hidden sm:inline">Template</span></button>
+                            <button className="btn-secondary btn-sm"><Upload size={14} /><span className="hidden sm:inline">Import</span></button>
+                            <button className="btn-secondary btn-sm border-primary/20 text-primary hover:bg-primary/5" onClick={handleExportPDF}><FileText size={14} /><span className="hidden sm:inline">Laporan</span></button>
+                            <button className="btn-primary btn-sm" onClick={() => { setEditRow(null); setShowModal(true); }}>
+                                {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
                                 <span>Tambah Data</span>
                             </button>
                         </>
@@ -810,3 +1129,4 @@ export default function RiskProfilePage() {
         </div>
     );
 }
+

@@ -143,7 +143,7 @@ export default function PedomanPage() {
         doc.text(guide.title.toUpperCase(), margin, yPos);
         yPos += 18;
 
-        doc.setFont('helvetica', 'oblique');
+        doc.setFont('helvetica', 'italic');
         doc.setFontSize(9.5);
         doc.setTextColor(100, 116, 139);
         const descLines = doc.splitTextToSize(guide.desc, contentWidth);
