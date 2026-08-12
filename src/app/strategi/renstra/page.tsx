@@ -7,6 +7,7 @@ import DataTable, { type Column } from '@/components/DataTable';
 import FormInputAI from '@/components/FormInputAI';
 import { Plus, Download, FileText, Map, Target, Calendar, BookOpen, Save, X, Loader2, Upload, ListChecks } from 'lucide-react';
 import { useAppSettings } from '@/hooks/useAppSettings';
+import { useUserProfile } from '@/hooks/useUserProfile';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -61,6 +62,8 @@ const defaultForm: Form = {
 
 export default function RenstraPage() {
     const { settings } = useAppSettings();
+    const { isManager, isAuditor } = useUserProfile();
+    const isReadOnly = isManager || isAuditor;
     const [data, setData] = useState<Renstra[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
@@ -464,13 +467,13 @@ export default function RenstraPage() {
                 <TopActionBar
                     filters={<FilterBar searchValue={search} onSearchChange={setSearch} searchPlaceholder="Cari program / renstra..." />}
                     actions={<>
-                        <button className="btn-secondary"><Download size={15} /><span className="hidden sm:inline">Template</span></button>
-                        <button className="btn-secondary"><Upload size={15} /><span className="hidden sm:inline">Import</span></button>
+                        {!isReadOnly && <button className="btn-secondary"><Download size={15} /><span className="hidden sm:inline">Template</span></button>}
+                        {!isReadOnly && <button className="btn-secondary"><Upload size={15} /><span className="hidden sm:inline">Import</span></button>}
                         <button className="btn-secondary border-primary/20 text-primary hover:bg-primary/5" onClick={handleExportPDF}><FileText size={15} /><span className="hidden sm:inline">Laporan</span></button>
-                        <button className="btn-primary" onClick={openAdd}><Plus size={15} /><span>Tambah</span></button>
+                        {!isReadOnly && <button className="btn-primary" onClick={openAdd}><Plus size={15} /><span>Tambah</span></button>}
                     </>}
                 />
-                <DataTable columns={columns} data={filtered} onEdit={openEdit} onDelete={handleDelete} onView={openEdit} isLoading={loading} />
+                <DataTable columns={columns} data={filtered} onEdit={isReadOnly ? undefined : openEdit} onDelete={isReadOnly ? undefined : handleDelete} onView={openEdit} isLoading={loading} />
             </div>
 
             {showModal && (

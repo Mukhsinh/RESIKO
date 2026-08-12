@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { supabase, type ManajemenRisiko, type ManajemenStrategi } from '@/lib/supabase';
 import { PageHeader, ScoreCard } from '@/components/SharedUI';
 import { TrendingUp, ShieldAlert, Target, CheckCircle2, AlertTriangle, FileText, ChevronDown, Filter, PieChart, Map as MapIcon } from 'lucide-react';
@@ -25,7 +25,7 @@ interface WorkUnit {
 
 export default function LaporanEksekutifPage() {
     const { settings } = useAppSettings();
-    const { profile } = useUserProfile();
+    const { profile, isManager, validUnitIds, isMatchUnit } = useUserProfile();
 
     const [risiko, setRisiko] = useState<ManajemenRisiko[]>([]);
     const [strategi, setStrategi] = useState<ManajemenStrategi[]>([]);
@@ -42,12 +42,12 @@ export default function LaporanEksekutifPage() {
     const [showDropdown, setShowDropdown] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
-    // Auto filter unit if user role is user_unit
+    // Auto filter unit if user role is user_unit or manager
     useEffect(() => {
-        if (profile?.role === 'user_unit' && profile.unit_kerja_id) {
+        if ((profile?.role === 'user_unit' || isManager) && profile?.unit_kerja_id) {
             setUnitFilter(profile.unit_kerja_id);
         }
-    }, [profile]);
+    }, [profile, isManager]);
 
     // Fetch unit list
     useEffect(() => {
@@ -97,14 +97,20 @@ export default function LaporanEksekutifPage() {
         return () => document.removeEventListener('mousedown', handler);
     }, []);
 
+    const checkMatch = useCallback((uId?: string, uObj?: any) => {
+        if (isManager) return isMatchUnit(uId, uObj);
+        if (!unitFilter) return true;
+        return uId === unitFilter || uObj?.id === unitFilter;
+    }, [unitFilter, isManager, isMatchUnit]);
+
     // Filter datasets by unitFilter
-    const filteredRisiko = useMemo(() => risiko.filter(r => (!unitFilter ? true : r.unit_kerja_id === unitFilter || (r.unit_kerja as any)?.id === unitFilter)), [risiko, unitFilter]);
-    const filteredStrategi = useMemo(() => strategi.filter(s => (!unitFilter ? true : s.unit_kerja_id === unitFilter || (s.unit_kerja as any)?.id === unitFilter)), [strategi, unitFilter]);
-    const filteredKris = useMemo(() => kris.filter(k => (!unitFilter ? true : k.unit_kerja_id === unitFilter || (k.unit_kerja as any)?.id === unitFilter)), [kris, unitFilter]);
-    const filteredLossEvents = useMemo(() => lossEvents.filter(l => (!unitFilter ? true : l.unit_kerja_id === unitFilter || (l.unit_kerja as any)?.id === unitFilter)), [lossEvents, unitFilter]);
-    const filteredSwot = useMemo(() => swotData.filter(sw => (!unitFilter ? true : sw.unit_kerja_id === unitFilter || (sw.unit_kerja as any)?.id === unitFilter)), [swotData, unitFilter]);
-    const filteredTows = useMemo(() => towsData.filter(tw => (!unitFilter ? true : tw.unit_kerja_id === unitFilter || (tw.unit_kerja as any)?.id === unitFilter)), [towsData, unitFilter]);
-    const filteredCascading = useMemo(() => cascadingData.filter(cs => (!unitFilter ? true : cs.unit_kerja_id === unitFilter || (cs.unit_kerja as any)?.id === unitFilter)), [cascadingData, unitFilter]);
+    const filteredRisiko = useMemo(() => risiko.filter(r => checkMatch(r.unit_kerja_id, r.unit_kerja)), [risiko, checkMatch]);
+    const filteredStrategi = useMemo(() => strategi.filter(s => checkMatch(s.unit_kerja_id, s.unit_kerja)), [strategi, checkMatch]);
+    const filteredKris = useMemo(() => kris.filter(k => checkMatch(k.unit_kerja_id, k.unit_kerja)), [kris, checkMatch]);
+    const filteredLossEvents = useMemo(() => lossEvents.filter(l => checkMatch(l.unit_kerja_id, l.unit_kerja)), [lossEvents, checkMatch]);
+    const filteredSwot = useMemo(() => swotData.filter(sw => checkMatch(sw.unit_kerja_id, sw.unit_kerja)), [swotData, checkMatch]);
+    const filteredTows = useMemo(() => towsData.filter(tw => checkMatch(tw.unit_kerja_id, tw.unit_kerja)), [towsData, checkMatch]);
+    const filteredCascading = useMemo(() => cascadingData.filter(cs => checkMatch(cs.unit_kerja_id, cs.unit_kerja)), [cascadingData, checkMatch]);
 
     // Strategy metrics calculations
     const kpiAchieved = useMemo(() => filteredStrategi.filter(d => {
@@ -245,7 +251,7 @@ export default function LaporanEksekutifPage() {
                                 className="form-input pl-9 pr-8 w-48 text-xs font-semibold bg-white border-slate-200"
                                 value={unitFilter}
                                 onChange={e => setUnitFilter(e.target.value)}
-                                disabled={profile?.role === 'user_unit'}
+                                disabled={profile?.role === 'user_unit' || isManager}
                             >
                                 <option value="">Semua Unit Kerja</option>
                                 {units.map(u => (

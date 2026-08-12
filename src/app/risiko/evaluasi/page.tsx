@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAppSettings } from '@/hooks/useAppSettings';
+import { useUserProfile } from '@/hooks/useUserProfile';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { PageHeader, ScoreCard } from '@/components/SharedUI';
@@ -258,6 +259,7 @@ function EvaluasiModal({ onClose, onSave, units, kriList, risikoList, saving }: 
 /* ─── Main Page ─── */
 export default function EvaluasiRisikoPage() {
     const { settings } = useAppSettings();
+    const { profile, isManager, isAuditor, validUnitIds, isMatchUnit } = useUserProfile();
     const [data, setData] = useState<EvaluasiRow[]>([]);
     const [year, setYear] = useState(String(CURRENT_YEAR));
     const [loading, setLoading] = useState(true);
@@ -484,20 +486,39 @@ export default function EvaluasiRisikoPage() {
         const yearStart = `${year}-01-01`;
         const yearEnd = `${year}-12-31`;
 
-        const [evalRes, kriRes] = await Promise.all([
-            supabase
+        let evalQuery = supabase
+            .from('evaluasi_risiko')
+            .select('*, unit_kerja(id, nama_unit), risk_inputs(id, nama_risiko, kode_risiko), key_risk_indicators(id, nama_kri, nilai_aktual, batas_atas, satuan)')
+            .gte('tanggal_evaluasi', yearStart)
+            .lte('tanggal_evaluasi', yearEnd)
+            .order('tanggal_evaluasi', { ascending: false });
+
+        let kriQuery = supabase
+            .from('key_risk_indicators')
+            .select('id, nama_kri, nilai_aktual, batas_atas, batas_bawah, satuan, unit_kerja_id, unit_kerja(id, nama_unit)');
+
+        const [evalRes, kriRes] = await Promise.all([evalQuery, kriQuery]);
+
+        let evalData = evalRes.data as EvaluasiRow[];
+        let kris = (kriRes.data ?? []) as KRIItem[];
+
+        if (evalRes.error) {
+            console.error('Error fetching fallback evaluasi:', evalRes.error);
+            const { data: fallbackEval } = await supabase
                 .from('evaluasi_risiko')
                 .select('*, unit_kerja(id, nama_unit), risk_inputs(id, nama_risiko, kode_risiko), key_risk_indicators(id, nama_kri, nilai_aktual, batas_atas, satuan)')
-                .gte('tanggal_evaluasi', yearStart)
-                .lte('tanggal_evaluasi', yearEnd)
-                .order('tanggal_evaluasi', { ascending: false }),
-            supabase
-                .from('key_risk_indicators')
-                .select('id, nama_kri, nilai_aktual, batas_atas, batas_bawah, satuan, unit_kerja_id, unit_kerja(id, nama_unit)')
-        ]);
+                .order('tanggal_evaluasi', { ascending: false });
+            evalData = (fallbackEval ?? []) as EvaluasiRow[];
+        }
 
-        setData((evalRes.data as EvaluasiRow[]) ?? []);
-        const kris = (kriRes.data ?? []) as KRIItem[];
+        if (kriRes.error) {
+            const { data: fallbackKri } = await supabase
+                .from('key_risk_indicators')
+                .select('id, nama_kri, nilai_aktual, batas_atas, batas_bawah, satuan, unit_kerja_id, unit_kerja(id, nama_unit)');
+            kris = (fallbackKri ?? []) as KRIItem[];
+        }
+
+        setData(evalData || []);
         setKriList(kris);
 
         // Build alerts for breached KRIs
@@ -510,7 +531,7 @@ export default function EvaluasiRisikoPage() {
         })));
 
         setLoading(false);
-    }, [year]);
+    }, [year, isManager]);
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -609,9 +630,11 @@ export default function EvaluasiRisikoPage() {
                             {downloading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
                             <span>Laporan</span>
                         </button>
-                        <button className="btn-primary flex items-center gap-2" onClick={() => setShowModal(true)}>
-                            <Plus size={15} /> Tambah Evaluasi
-                        </button>
+                        {!isAuditor && (
+                            <button className="btn-primary flex items-center gap-2" onClick={() => setShowModal(true)}>
+                                <Plus size={15} /> Tambah Evaluasi
+                            </button>
+                        )}
                     </div>
                 }
             />

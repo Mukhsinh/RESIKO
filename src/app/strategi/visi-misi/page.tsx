@@ -7,6 +7,7 @@ import { Eye, Target, Save, Loader2, Plus, Pencil, Trash2, CheckCircle2, GripVer
 import FormInputAI from '@/components/FormInputAI';
 import jsPDF from 'jspdf';
 import { useAppSettings } from '@/hooks/useAppSettings';
+import { useUserProfile } from '@/hooks/useUserProfile';
 
 interface MisiItem {
     id?: string;
@@ -29,6 +30,8 @@ const CURRENT_YEAR = new Date().getFullYear();
 
 export default function VisiMisiPage() {
     const { settings } = useAppSettings();
+    const { isManager, isAuditor } = useUserProfile();
+    const isReadOnly = isManager || isAuditor;
     const [year, setYear] = useState(String(CURRENT_YEAR));
     const [visi, setVisi] = useState('');
     const [saving, setSaving] = useState(false);
@@ -78,31 +81,39 @@ export default function VisiMisiPage() {
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const { data, error } = await supabase
+                // Fetch hospital global Visi Misi (regardless of unit_kerja)
+                let { data, error } = await supabase
                     .from('visi_misi')
                     .select('*')
                     .eq('tahun', Number(year))
-                    .maybeSingle();
+                    .order('created_at', { ascending: false })
+                    .limit(1);
 
-                if (error) {
-                    console.error('Error fetching visi misi:', error);
-                    setVisi('');
-                    setExistingId(null);
-                    setMisiItems([]);
-                    return;
+                // Fallback: if no record for the exact year, get the latest available Visi & Misi from any year
+                if ((!data || data.length === 0) && !error) {
+                    const { data: latestData } = await supabase
+                        .from('visi_misi')
+                        .select('*')
+                        .order('tahun', { ascending: false })
+                        .order('created_at', { ascending: false })
+                        .limit(1);
+                    if (latestData && latestData.length > 0) {
+                        data = latestData;
+                    }
                 }
 
-                if (data) {
-                    setVisi(data.visi ?? '');
-                    setExistingId(data.id);
-                    await fetchMisiItems(data.id);
+                if (data && data.length > 0) {
+                    const vm = data[0];
+                    setVisi(vm.visi ?? '');
+                    setExistingId(vm.id);
+                    await fetchMisiItems(vm.id);
                 } else {
                     setVisi('');
                     setExistingId(null);
                     setMisiItems([]);
                 }
             } catch (err) {
-                console.error('Error:', err);
+                console.error('Error fetching visi misi:', err);
                 setVisi('');
                 setExistingId(null);
                 setMisiItems([]);
@@ -121,12 +132,14 @@ export default function VisiMisiPage() {
             return existingId;
         }
         // Double-check: maybe it was created just now from another flow
-        const { data: check } = await supabase
+        const { data: checkData } = await supabase
             .from('visi_misi')
             .select('id')
             .eq('tahun', Number(year))
-            .is('unit_kerja_id', null)
-            .maybeSingle();
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+        const check = checkData && checkData.length > 0 ? checkData[0] : null;
         if (check?.id) {
             setExistingId(check.id);
             if (withVisiUpdate) {
@@ -467,21 +480,29 @@ export default function VisiMisiPage() {
                         <div className="w-1.5 h-6 rounded-full bg-[#137fec]" />
                         <h3 className="font-bold text-slate-700">Pernyataan Visi</h3>
                     </div>
-                    <FormInputAI
-                        label="Visi Organisasi"
-                        placeholder="Contoh: Menjadi rumah sakit terpercaya dan unggul dalam pelayanan kesehatan di tingkat regional pada tahun 2030..."
-                        value={visi}
-                        onChange={v => setVisi(v)}
-                    />
+                    {isReadOnly ? (
+                        <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-slate-800 text-sm leading-relaxed">
+                            {visi || <span className="italic text-slate-400">Belum ada pernyataan visi.</span>}
+                        </div>
+                    ) : (
+                        <FormInputAI
+                            label="Visi Organisasi"
+                            placeholder="Contoh: Menjadi rumah sakit terpercaya dan unggul dalam pelayanan kesehatan di tingkat regional pada tahun 2030..."
+                            value={visi}
+                            onChange={v => setVisi(v)}
+                        />
+                    )}
                 </div>
 
-                <div className="flex justify-end">
-                    <button type="submit" className="btn-primary gap-2" disabled={saving}>
-                        {saving ? <><Loader2 size={16} className="animate-spin" /><span>Menyimpan...</span></> :
-                            saved ? <><CheckCircle2 size={16} /><span>Tersimpan!</span></> :
-                                <><Save size={16} /><span>Simpan Visi</span></>}
-                    </button>
-                </div>
+                {!isReadOnly && (
+                    <div className="flex justify-end">
+                        <button type="submit" className="btn-primary gap-2" disabled={saving}>
+                            {saving ? <><Loader2 size={16} className="animate-spin" /><span>Menyimpan...</span></> :
+                                saved ? <><CheckCircle2 size={16} /><span>Tersimpan!</span></> :
+                                    <><Save size={16} /><span>Simpan Visi</span></>}
+                        </button>
+                    </div>
+                )}
             </form>
 
             {/* Misi Section */}
@@ -494,14 +515,16 @@ export default function VisiMisiPage() {
                             {misiItems.length} misi
                         </span>
                     </div>
-                    <button
-                        type="button"
-                        className="btn-primary text-sm gap-1.5"
-                        onClick={openAddMisi}
-                    >
-                        <Plus size={15} />
-                        <span>Tambah Misi</span>
-                    </button>
+                    {!isReadOnly && (
+                        <button
+                            type="button"
+                            className="btn-primary text-sm gap-1.5"
+                            onClick={openAddMisi}
+                        >
+                            <Plus size={15} />
+                            <span>Tambah Misi</span>
+                        </button>
+                    )}
                 </div>
 
                 {loadingMisi ? (
@@ -515,7 +538,7 @@ export default function VisiMisiPage() {
                             <Target size={24} className="text-emerald-400" />
                         </div>
                         <p className="text-slate-500 text-sm font-medium">Belum ada pernyataan misi</p>
-                        <p className="text-slate-400 text-xs mt-1">Klik &quot;Tambah Misi&quot; untuk menambahkan misi pertama</p>
+                        {!isReadOnly && <p className="text-slate-400 text-xs mt-1">Klik &quot;Tambah Misi&quot; untuk menambahkan misi pertama</p>}
                     </div>
                 ) : (
                     <div className="space-y-3">
@@ -531,28 +554,30 @@ export default function VisiMisiPage() {
                                     </span>
                                 </div>
                                 <p className="flex-1 text-slate-700 text-sm leading-relaxed pt-0.5">{item.isi_misi}</p>
-                                <div className="flex gap-1.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button
-                                        type="button"
-                                        title="Edit misi"
-                                        className="p-1.5 rounded-lg hover:bg-blue-100 hover:text-blue-600 text-slate-400 transition-colors"
-                                        onClick={() => openEditMisi(item)}
-                                    >
-                                        <Pencil size={14} />
-                                    </button>
-                                    <button
-                                        type="button"
-                                        title="Hapus misi"
-                                        className="p-1.5 rounded-lg hover:bg-red-100 hover:text-red-600 text-slate-400 transition-colors"
-                                        onClick={() => handleDeleteMisi(item)}
-                                        disabled={deletingId === item.id}
-                                    >
-                                        {deletingId === item.id
-                                            ? <Loader2 size={14} className="animate-spin" />
-                                            : <Trash2 size={14} />
-                                        }
-                                    </button>
-                                </div>
+                                {!isReadOnly && (
+                                    <div className="flex gap-1.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button
+                                            type="button"
+                                            title="Edit misi"
+                                            className="p-1.5 rounded-lg hover:bg-blue-100 hover:text-blue-600 text-slate-400 transition-colors"
+                                            onClick={() => openEditMisi(item)}
+                                        >
+                                            <Pencil size={14} />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            title="Hapus misi"
+                                            className="p-1.5 rounded-lg hover:bg-red-100 hover:text-red-600 text-slate-400 transition-colors"
+                                            onClick={() => handleDeleteMisi(item)}
+                                            disabled={deletingId === item.id}
+                                        >
+                                            {deletingId === item.id
+                                                ? <Loader2 size={14} className="animate-spin" />
+                                                : <Trash2 size={14} />
+                                            }
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         ))}
                     </div>

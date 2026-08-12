@@ -266,7 +266,9 @@ export default function MasterPenggunaPage() {
         { key: 'email', label: 'Email' },
         {
             key: 'role', label: 'Role', render: r => (
-                <span className={r.role === 'admin' ? 'badge-red' : 'badge-blue'}>{r.role}</span>
+                <span className={r.role === 'admin' ? 'badge-red' : (r.role === 'auditor' ? 'badge-amber' : 'badge-blue')}>
+                    {r.role === 'auditor' ? 'Auditor' : r.role === 'admin' ? 'Admin' : 'Manager'}
+                </span>
             )
         },
         { key: 'unit_kerja', label: 'Unit Kerja', render: r => r.unit_kerja?.nama_unit ?? <span className="text-slate-400 italic">-</span> },
@@ -280,8 +282,8 @@ export default function MasterPenggunaPage() {
             <div className="grid grid-cols-2 xl:grid-cols-4 gap-5 mb-8">
                 <ScoreCard icon={<Users size={22} className="text-[#137fec]" />} title="Total Pengguna" value={data.length} colorClass="bg-blue-50 border-blue-100" />
                 <ScoreCard icon={<Shield size={22} className="text-rose-500" />} title="Admin" value={data.filter(d => d.role === 'admin').length} colorClass="bg-rose-50 border-rose-100" />
-                <ScoreCard icon={<UserCheck size={22} className="text-emerald-500" />} title="Manager" value={data.filter(d => d.role === 'manager').length} colorClass="bg-emerald-50 border-emerald-100" />
-                <ScoreCard icon={<Users size={22} className="text-amber-500" />} title="Unit Kerja" value={new Set(data.filter(d => d.unit_kerja_id).map(d => d.unit_kerja_id)).size} colorClass="bg-amber-50 border-amber-100" />
+                <ScoreCard icon={<UserCheck size={22} className="text-emerald-500" />} title="Manager" value={data.filter(d => d.role === 'manager' || d.role === 'user_unit').length} colorClass="bg-emerald-50 border-emerald-100" />
+                <ScoreCard icon={<Users size={22} className="text-amber-500" />} title="Auditor" value={data.filter(d => d.role === 'auditor').length} colorClass="bg-amber-50 border-amber-100" />
             </div>
 
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
@@ -340,6 +342,7 @@ export default function MasterPenggunaPage() {
                                 <select className="form-input" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
                                     <option value="manager">Manager</option>
                                     <option value="admin">Admin</option>
+                                    <option value="auditor">Auditor</option>
                                 </select>
                             </div>
                             <div>

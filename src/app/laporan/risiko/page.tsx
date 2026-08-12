@@ -65,7 +65,7 @@ interface LossEventRow {
 
 export default function LaporanRisikoPage() {
     const { settings } = useAppSettings();
-    const { profile } = useUserProfile();
+    const { profile, isManager, validUnitIds, isMatchUnit } = useUserProfile();
 
     const [risks, setRisks] = useState<ExtendedManajemenRisiko[]>([]);
     const [kris, setKris] = useState<KRIRow[]>([]);
@@ -79,10 +79,10 @@ export default function LaporanRisikoPage() {
 
     // Sync unit filter with user profile
     useEffect(() => {
-        if (profile?.role === 'user_unit' && profile.unit_kerja_id) {
+        if ((profile?.role === 'user_unit' || isManager) && profile?.unit_kerja_id) {
             setUnitFilter(profile.unit_kerja_id);
         }
-    }, [profile]);
+    }, [profile, isManager]);
 
     // Fetch units
     useEffect(() => {
@@ -126,10 +126,16 @@ export default function LaporanRisikoPage() {
         fetchData();
     }, [fetchData]);
 
+    const checkMatch = (uId?: string, uObj?: any) => {
+        if (isManager) return isMatchUnit(uId, uObj);
+        if (!unitFilter) return true;
+        return uId === unitFilter || uObj?.id === unitFilter;
+    };
+
     // Filter datasets by unitFilter
-    const filteredRisks = risks.filter(r => (unitFilter ? r.unit_kerja_id === unitFilter : true));
-    const filteredKris = kris.filter(k => (unitFilter ? k.unit_kerja_id === unitFilter : true));
-    const filteredLossEvents = lossEvents.filter(l => (unitFilter ? l.unit_kerja_id === unitFilter : true));
+    const filteredRisks = risks.filter(r => checkMatch(r.unit_kerja_id, r.unit_kerja));
+    const filteredKris = kris.filter(k => checkMatch(k.unit_kerja_id, k.unit_kerja));
+    const filteredLossEvents = lossEvents.filter(l => checkMatch(l.unit_kerja_id, l.unit_kerja));
 
     // Summary Statistics
     const totalRisks = filteredRisks.length;
@@ -935,7 +941,7 @@ export default function LaporanRisikoPage() {
                             className="filter-select w-44"
                             value={unitFilter}
                             onChange={e => setUnitFilter(e.target.value)}
-                            disabled={profile?.role === 'user_unit'}
+                            disabled={profile?.role === 'user_unit' || isManager}
                             title="Filter Unit Kerja"
                         >
                             <option value="">Semua Unit Kerja</option>

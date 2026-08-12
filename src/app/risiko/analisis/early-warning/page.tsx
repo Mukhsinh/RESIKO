@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAppSettings } from '@/hooks/useAppSettings';
+import { useUserProfile } from '@/hooks/useUserProfile';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { PageHeader, ScoreCard, FilterBar, TopActionBar } from '@/components/SharedUI';
@@ -219,6 +220,7 @@ function ViewModal({ row, onClose }: { row: EWSAlert; onClose: () => void }) {
 /* ─── Main Page ─── */
 export default function EarlyWarningSystemPage() {
     const { settings } = useAppSettings();
+    const { profile, isManager, isAuditor, validUnitIds, isMatchUnit } = useUserProfile();
     const [rows, setRows] = useState<EWSAlert[]>([]);
     const [kriList, setKriList] = useState<KRIItem[]>([]);
     const [units, setUnits] = useState<WorkUnit[]>([]);
@@ -230,6 +232,13 @@ export default function EarlyWarningSystemPage() {
     const [unitFilter, setUnitFilter] = useState('');
     const [showThresholdModal, setShowThresholdModal] = useState(false);
     const [viewRow, setViewRow] = useState<EWSAlert | null>(null);
+
+    // Auto-lock unit filter for unit managers
+    useEffect(() => {
+        if (isManager && profile?.unit_kerja_id) {
+            setUnitFilter(profile.unit_kerja_id);
+        }
+    }, [isManager, profile]);
 
     const handleExportPDF = async () => {
         setDownloading(true);
@@ -443,11 +452,39 @@ export default function EarlyWarningSystemPage() {
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const { data, error } = await supabase
+            let q = supabase
                 .from('ews_thresholds')
                 .select('*, unit_kerja(id, nama_unit), key_risk_indicators(id, nama_kri, nilai_aktual, batas_atas, satuan)')
                 .order('created_at', { ascending: false });
-            if (error) { console.error('Error fetching EWS:', error); setRows([]); }
+
+            // For non-managers, if a specific unit is selected from dropdown, apply SQL filter
+            if (!isManager && unitFilter) {
+                q = q.eq('unit_kerja_id', unitFilter);
+            }
+
+            const { data, error } = await q;
+            if (error) {
+                console.error('Error fetching fallback EWS:', error);
+
+                const { data: fallbackData } = await supabase
+                    .from('ews_thresholds')
+                    .select('*, unit_kerja(id, nama_unit), key_risk_indicators(id, nama_kri, nilai_aktual, batas_atas, satuan)')
+                    .order('created_at', { ascending: false });
+
+                if (fallbackData) {
+                    const enriched = (fallbackData as EWSAlert[]).map(r => {
+                        const aktual = r.key_risk_indicators?.nilai_aktual ?? null;
+                        return {
+                            ...r,
+                            nilai_aktual: aktual ?? undefined,
+                            is_breached: aktual !== null ? aktual > r.nilai_batas : false,
+                        };
+                    });
+                    setRows(enriched);
+                } else {
+                    setRows([]);
+                }
+            }
             else {
                 const enriched = ((data ?? []) as EWSAlert[]).map(r => {
                     const aktual = r.key_risk_indicators?.nilai_aktual ?? null;
@@ -461,7 +498,7 @@ export default function EarlyWarningSystemPage() {
             }
         } catch (e) { console.error(e); setRows([]); }
         finally { setLoading(false); }
-    }, []);
+    }, [isManager, validUnitIds, unitFilter]);
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -475,7 +512,7 @@ export default function EarlyWarningSystemPage() {
     const filtered = rows.filter(d => {
         const matchSearch = (d.nama_threshold || '').toLowerCase().includes(search.toLowerCase()) ||
             (d.parameter || '').toLowerCase().includes(search.toLowerCase());
-        const matchUnit = unitFilter ? d.unit_kerja_id === unitFilter : true;
+        const matchUnit = isManager ? isMatchUnit(d.unit_kerja_id, d.unit_kerja) : (unitFilter ? d.unit_kerja_id === unitFilter || (d.unit_kerja as any)?.id === unitFilter : true);
         return matchSearch && matchUnit;
     });
 
@@ -568,7 +605,9 @@ export default function EarlyWarningSystemPage() {
                         </span>
                     )}
                     <button title="Lihat detail" className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded" onClick={() => setViewRow(r)}><Eye size={15} /></button>
-                    <button title="Hapus" className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded" onClick={() => handleDelete(r)}><Trash2 size={15} /></button>
+                    {!isAuditor && (
+                        <button title="Hapus" className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded" onClick={() => handleDelete(r)}><Trash2 size={15} /></button>
+                    )}
                 </div>
             )
         },
@@ -617,10 +656,16 @@ export default function EarlyWarningSystemPage() {
                                 searchValue={search} onSearchChange={setSearch} searchPlaceholder="Cari threshold..."
                                 yearValue={year} onYearChange={setYear}
                             />
-                            <select className="form-select text-sm h-9" value={unitFilter} onChange={e => setUnitFilter(e.target.value)}>
-                                <option value="">Semua Unit</option>
-                                {units.map(u => <option key={u.id} value={u.id}>{u.nama_unit}</option>)}
-                            </select>
+                            {isManager ? (
+                                <div className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold border border-slate-200">
+                                    {units.find(u => u.id === unitFilter)?.nama_unit || profile?.unit_kerja_name || 'Unit Anda'}
+                                </div>
+                            ) : (
+                                <select className="form-select text-sm h-9" value={unitFilter} onChange={e => setUnitFilter(e.target.value)}>
+                                    <option value="">Semua Unit</option>
+                                    {units.map(u => <option key={u.id} value={u.id}>{u.nama_unit}</option>)}
+                                </select>
+                            )}
                         </div>
                     }
                     actions={
@@ -629,7 +674,9 @@ export default function EarlyWarningSystemPage() {
                                 {downloading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
                                 <span className="hidden sm:inline">Laporan</span>
                             </button>
-                            <button className="btn-primary" onClick={() => setShowThresholdModal(true)}><Settings size={15} /><span>Set Threshold</span></button>
+                            {!isAuditor && (
+                                <button className="btn-primary" onClick={() => setShowThresholdModal(true)}><Settings size={15} /><span>Set Threshold</span></button>
+                            )}
                         </>
                     }
                 />

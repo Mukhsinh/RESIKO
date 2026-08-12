@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAppSettings } from '@/hooks/useAppSettings';
+import { useUserProfile } from '@/hooks/useUserProfile';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { PageHeader, ScoreCard, FilterBar, TopActionBar } from '@/components/SharedUI';
@@ -247,6 +248,7 @@ function ViewModal({ row, onClose }: { row: LossEvent; onClose: () => void }) {
 /* ─── Main Page ─── */
 export default function LossEventPage() {
     const { settings } = useAppSettings();
+    const { profile, isManager, isAuditor, validUnitIds, isMatchUnit } = useUserProfile();
     const [rows, setRows] = useState<LossEvent[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -260,6 +262,13 @@ export default function LossEventPage() {
     const [riskInputs, setRiskInputs] = useState<RiskInput[]>([]);
     const [kriList, setKriList] = useState<KRIItem[]>([]);
 
+    // Auto-lock unit filter for unit managers
+    useEffect(() => {
+        if (isManager && profile?.unit_kerja_id) {
+            setUnitFilter(profile.unit_kerja_id);
+        }
+    }, [isManager, profile]);
+
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
@@ -267,13 +276,36 @@ export default function LossEventPage() {
                 .from('loss_events')
                 .select('*, unit_kerja(id, nama_unit), risk_inputs(id, nama_risiko, kode_risiko), key_risk_indicators(id, nama_kri)')
                 .order('tanggal_kejadian', { ascending: false });
+
             if (year) q = q.eq('tahun', Number(year));
+
+            // For non-managers, if a specific unit is selected from dropdown, apply SQL filter
+            if (!isManager && unitFilter) {
+                q = q.eq('unit_kerja_id', unitFilter);
+            }
+
             const { data, error } = await q;
-            if (error) { console.error('Error fetching loss events:', error); setRows([]); }
-            else setRows((data as LossEvent[]) ?? []);
-        } catch (e) { console.error(e); setRows([]); }
-        finally { setLoading(false); }
-    }, [year]);
+
+            if (error) {
+                console.error('Error fetching fallback loss events:', error);
+
+                // Fallback attempt without year filter in case of severe errors
+                const { data: fallbackData } = await supabase
+                    .from('loss_events')
+                    .select('*, unit_kerja(id, nama_unit), risk_inputs(id, nama_risiko, kode_risiko), key_risk_indicators(id, nama_kri)')
+                    .order('tanggal_kejadian', { ascending: false });
+
+                setRows((fallbackData as LossEvent[]) ?? []);
+            } else {
+                setRows((data as LossEvent[]) ?? []);
+            }
+        } catch (e) {
+            console.error(e);
+            setRows([]);
+        } finally {
+            setLoading(false);
+        }
+    }, [year, isManager, unitFilter]);
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -286,7 +318,7 @@ export default function LossEventPage() {
     const filtered = rows.filter(d => {
         const matchSearch = (d.judul_kejadian || '').toLowerCase().includes(search.toLowerCase()) ||
             (d.deskripsi_kejadian || '').toLowerCase().includes(search.toLowerCase());
-        const matchUnit = unitFilter ? d.unit_kerja_id === unitFilter : true;
+        const matchUnit = isManager ? isMatchUnit(d.unit_kerja_id, d.unit_kerja) : (unitFilter ? d.unit_kerja_id === unitFilter || (d.unit_kerja as any)?.id === unitFilter : true);
         return matchSearch && matchUnit;
     });
 
@@ -438,11 +470,15 @@ export default function LossEventPage() {
             key: 'actions', label: 'Aksi', render: r => (
                 <div className="flex gap-1 justify-center">
                     <button title="Lihat" className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded" onClick={() => setViewRow(r)}><Eye size={15} /></button>
-                    <button title="Edit" className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded" onClick={() => {
-                        setEditRow({ ...EMPTY_FORM, ...r, tanggal_kejadian: r.tanggal_kejadian?.split('T')[0] ?? EMPTY_FORM.tanggal_kejadian, _id: r.id });
-                        setShowModal(true);
-                    }}><Edit size={15} /></button>
-                    <button title="Hapus" className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded" onClick={() => handleDelete(r)}><Trash2 size={15} /></button>
+                    {!isAuditor && (
+                        <>
+                            <button title="Edit" className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded" onClick={() => {
+                                setEditRow({ ...EMPTY_FORM, ...r, tanggal_kejadian: r.tanggal_kejadian?.split('T')[0] ?? EMPTY_FORM.tanggal_kejadian, _id: r.id });
+                                setShowModal(true);
+                            }}><Edit size={15} /></button>
+                            <button title="Hapus" className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded" onClick={() => handleDelete(r)}><Trash2 size={15} /></button>
+                        </>
+                    )}
                 </div>
             )
         },
@@ -501,16 +537,24 @@ export default function LossEventPage() {
                                 searchValue={search} onSearchChange={setSearch} searchPlaceholder="Cari riwayat event..."
                                 yearValue={year} onYearChange={setYear}
                             />
-                            <select className="form-select text-sm h-9" value={unitFilter} onChange={e => setUnitFilter(e.target.value)}>
-                                <option value="">Semua Unit</option>
-                                {units.map(u => <option key={u.id} value={u.id}>{u.nama_unit}</option>)}
-                            </select>
+                            {isManager ? (
+                                <div className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold border border-slate-200">
+                                    {units.find(u => u.id === unitFilter)?.nama_unit || profile?.unit_kerja_name || 'Unit Anda'}
+                                </div>
+                            ) : (
+                                <select className="form-select text-sm h-9" value={unitFilter} onChange={e => setUnitFilter(e.target.value)}>
+                                    <option value="">Semua Unit</option>
+                                    {units.map(u => <option key={u.id} value={u.id}>{u.nama_unit}</option>)}
+                                </select>
+                            )}
                         </div>
                     }
                     actions={
                         <>
                             <button className="btn-secondary border-primary/20 text-primary hover:bg-primary/5" onClick={handleExportPDF}><FileText size={15} /><span className="hidden sm:inline">Laporan</span></button>
-                            <button className="btn-primary" onClick={() => { setEditRow(null); setShowModal(true); }}><Plus size={15} /><span>Catat Event</span></button>
+                            {!isAuditor && (
+                                <button className="btn-primary" onClick={() => { setEditRow(null); setShowModal(true); }}><Plus size={15} /><span>Catat Event</span></button>
+                            )}
                         </>
                     }
                 />

@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAppSettings } from '@/hooks/useAppSettings';
+import { useUserProfile } from '@/hooks/useUserProfile';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { PageHeader, FilterBar, TopActionBar } from '@/components/SharedUI';
@@ -98,6 +99,7 @@ function ViewModal({ row, onClose }: { row: RiskRegisterRow; onClose: () => void
 
 /* ─── Main Page ─── */
 export default function RiskRegisterPage() {
+    const { profile, isManager, isAuditor, validUnitIds, isMatchUnit } = useUserProfile();
     const [rows, setRows] = useState<RiskRegisterRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [downloading, setDownloading] = useState(false);
@@ -107,6 +109,13 @@ export default function RiskRegisterPage() {
     const [units, setUnits] = useState<WorkUnit[]>([]);
     const [viewRow, setViewRow] = useState<RiskRegisterRow | null>(null);
 
+    // Auto-lock unit filter for unit managers
+    useEffect(() => {
+        if (isManager && profile?.unit_kerja_id) {
+            setUnitFilter(profile.unit_kerja_id);
+        }
+    }, [isManager, profile]);
+
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
@@ -114,13 +123,36 @@ export default function RiskRegisterPage() {
                 .from('manajemen_risiko')
                 .select('*, unit_kerja(id, nama_unit)')
                 .order('skor_risiko', { ascending: false });
+
             if (year) q = q.eq('tahun', Number(year));
+
+            // For non-managers, if a specific unit is selected from dropdown, apply SQL filter
+            if (!isManager && unitFilter) {
+                q = q.eq('unit_kerja_id', unitFilter);
+            }
+
             const { data, error } = await q;
-            if (error) { console.error('Error fetching risk register:', error); setRows([]); }
-            else setRows((data as RiskRegisterRow[]) ?? []);
-        } catch (e) { console.error(e); setRows([]); }
-        finally { setLoading(false); }
-    }, [year]);
+
+            if (error) {
+                console.error('Error fetching fallback risk register:', error);
+
+                // Fallback attempt without year filter in case of severe errors
+                const { data: fallbackData } = await supabase
+                    .from('manajemen_risiko')
+                    .select('*, unit_kerja(id, nama_unit)')
+                    .order('skor_risiko', { ascending: false });
+
+                setRows((fallbackData as RiskRegisterRow[]) ?? []);
+            } else {
+                setRows((data as RiskRegisterRow[]) ?? []);
+            }
+        } catch (e) {
+            console.error(e);
+            setRows([]);
+        } finally {
+            setLoading(false);
+        }
+    }, [year, isManager, unitFilter]);
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -131,7 +163,7 @@ export default function RiskRegisterPage() {
     const filtered = rows.filter(d => {
         const matchSearch = d.identifikasi_risiko.toLowerCase().includes(search.toLowerCase()) ||
             (d.kode_risiko || '').toLowerCase().includes(search.toLowerCase());
-        const matchUnit = unitFilter ? d.unit_kerja_id === unitFilter : true;
+        const matchUnit = isManager ? isMatchUnit(d.unit_kerja_id, d.unit_kerja) : (unitFilter ? d.unit_kerja_id === unitFilter || (d.unit_kerja as any)?.id === unitFilter : true);
         return matchSearch && matchUnit;
     });
 
@@ -407,10 +439,16 @@ export default function RiskRegisterPage() {
                                 searchValue={search} onSearchChange={setSearch} searchPlaceholder="Cari risk register..."
                                 yearValue={year} onYearChange={setYear}
                             />
-                            <select className="form-select text-sm h-9" value={unitFilter} onChange={e => setUnitFilter(e.target.value)}>
-                                <option value="">Semua Unit</option>
-                                {units.map(u => <option key={u.id} value={u.id}>{u.nama_unit}</option>)}
-                            </select>
+                            {isManager ? (
+                                <div className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold border border-slate-200">
+                                    {units.find(u => u.id === unitFilter)?.nama_unit || profile?.unit_kerja_name || 'Unit Anda'}
+                                </div>
+                            ) : (
+                                <select className="form-select text-sm h-9" value={unitFilter} onChange={e => setUnitFilter(e.target.value)}>
+                                    <option value="">Semua Unit</option>
+                                    {units.map(u => <option key={u.id} value={u.id}>{u.nama_unit}</option>)}
+                                </select>
+                            )}
                         </div>
                     }
                     actions={

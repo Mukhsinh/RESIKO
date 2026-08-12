@@ -88,7 +88,7 @@ function AchievementBadge({ target, realisasi }: { target: string; realisasi: st
 }
 
 export default function LaporanStrategiPage() {
-    const { profile } = useUserProfile();
+    const { profile, isManager, validUnitIds, isMatchUnit } = useUserProfile();
     const { settings } = useAppSettings();
 
     const [data, setData] = useState<ManajemenStrategi[]>([]);
@@ -107,10 +107,10 @@ export default function LaporanStrategiPage() {
     const [activeTab, setActiveTab] = useState<'renstra' | 'kpi' | 'swot_kartesius' | 'strategic_map'>('renstra');
 
     useEffect(() => {
-        if (profile?.role === 'user_unit' && profile.unit_kerja_id) {
+        if ((profile?.role === 'user_unit' || isManager) && profile?.unit_kerja_id) {
             setUnitFilter(profile.unit_kerja_id);
         }
-    }, [profile]);
+    }, [profile, isManager]);
 
     useEffect(() => {
         supabase.from('unit_kerja').select('id, nama_unit').order('nama_unit').then(({ data: u, error }) => {
@@ -164,7 +164,8 @@ export default function LaporanStrategiPage() {
                 setTowsData(towsRows ?? []);
 
                 // Fetch Visi & Misi
-                const { data: vmRow } = await supabase.from('visi_misi').select('*').eq('tahun', Number(year)).maybeSingle();
+                const { data: vmRows } = await supabase.from('visi_misi').select('*').eq('tahun', Number(year)).order('created_at', { ascending: false }).limit(1);
+                const vmRow = vmRows && vmRows.length > 0 ? vmRows[0] : null;
                 if (vmRow) {
                     const { data: mRows } = await supabase.from('misi_items').select('*').eq('visi_misi_id', vmRow.id).order('nomor');
                     setVisiData({
@@ -185,37 +186,19 @@ export default function LaporanStrategiPage() {
         fetchData();
     }, [year]);
 
-    const filteredData = data.filter(d => {
+    const checkMatch = (uId?: string, uObj?: any) => {
+        if (isManager) return isMatchUnit(uId, uObj);
         if (!unitFilter) return true;
-        return d.unit_kerja_id === unitFilter || (d.unit_kerja as any)?.id === unitFilter;
-    });
+        return uId === unitFilter || uObj?.id === unitFilter;
+    };
 
-    const filteredSwot = swotData.filter(s => {
-        if (!unitFilter) return true;
-        return s.unit_kerja_id === unitFilter || (s.unit_kerja as any)?.id === unitFilter;
-    });
-
+    const filteredData = data.filter(d => checkMatch(d.unit_kerja_id, d.unit_kerja));
+    const filteredSwot = swotData.filter(s => checkMatch(s.unit_kerja_id, s.unit_kerja));
     const filteredRenstra = renstraData; // Renstra RS applies globally across RS
-
-    const filteredRkt = rktData.filter(r => {
-        if (!unitFilter) return true;
-        return r.unit_kerja_id === unitFilter || (r.unit_kerja as any)?.id === unitFilter;
-    });
-
-    const filteredIkt = iktData.filter(r => {
-        if (!unitFilter) return true;
-        return r.unit_kerja_id === unitFilter || (r.unit_kerja as any)?.id === unitFilter;
-    });
-
-    const filteredCascading = cascadingData.filter(c => {
-        if (!unitFilter) return true;
-        return c.unit_kerja_id === unitFilter || (c.unit_kerja as any)?.id === unitFilter;
-    });
-
-    const filteredTows = towsData.filter(t => {
-        if (!unitFilter) return true;
-        return t.unit_kerja_id === unitFilter || (t.unit_kerja as any)?.id === unitFilter;
-    });
+    const filteredRkt = rktData.filter(r => checkMatch(r.unit_kerja_id, r.unit_kerja));
+    const filteredIkt = iktData.filter(r => checkMatch(r.unit_kerja_id, r.unit_kerja));
+    const filteredCascading = cascadingData.filter(c => checkMatch(c.unit_kerja_id, c.unit_kerja));
+    const filteredTows = towsData.filter(t => checkMatch(t.unit_kerja_id, t.unit_kerja));
 
     // Compute Diagram Kartesius SWOT per unit
     const kartesiusUnits = Object.entries(
@@ -1155,7 +1138,7 @@ export default function LaporanStrategiPage() {
                             className="filter-select w-44"
                             value={unitFilter}
                             onChange={e => setUnitFilter(e.target.value)}
-                            disabled={profile?.role === 'user_unit'}
+                            disabled={profile?.role === 'user_unit' || isManager}
                             title="Filter Unit Kerja"
                         >
                             <option value="">Semua Unit Kerja</option>

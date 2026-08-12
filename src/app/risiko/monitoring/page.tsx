@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAppSettings } from '@/hooks/useAppSettings';
+import { useUserProfile } from '@/hooks/useUserProfile';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { PageHeader, ScoreCard } from '@/components/SharedUI';
@@ -70,6 +71,7 @@ function StatusBar({ label, count, total, color }: { label: string; count: numbe
 
 export default function MonitoringRisikoPage() {
     const { settings } = useAppSettings();
+    const { profile, isManager, isAuditor, validUnitIds, isMatchUnit } = useUserProfile();
     const [data, setData] = useState<MonitoringData[]>([]);
     const [year, setYear] = useState(String(CURRENT_YEAR));
     const [loading, setLoading] = useState(true);
@@ -95,15 +97,31 @@ export default function MonitoringRisikoPage() {
         }
 
         const { data: rows } = await query;
-        setData((rows as MonitoringData[]) ?? []);
+        let result = (rows as MonitoringData[]) ?? [];
+        if (isManager && validUnitIds.length > 0) {
+            result = result.filter(r => {
+                const uId = r.risk_inputs?.nama_unit_kerja_id;
+                if (!uId) return true;
+                return validUnitIds.includes(uId);
+            });
+        }
+        setData(result);
         setLoading(false);
-    }, [year]);
+    }, [year, isManager, validUnitIds]);
 
     useEffect(() => {
         fetchData();
         supabase.from('unit_kerja').select('id, nama_unit').then(({ data }: { data: any }) => setUnits((data ?? []) as WorkUnit[]));
-        supabase.from('risk_inputs').select('id, nama_risiko, identifikasi_deskripsi, kode_risiko, nama_unit_kerja_id').then(({ data }: { data: any }) => setRisikoList((data ?? []) as RisikoItem[]));
-    }, [fetchData]);
+        let rQuery = supabase.from('risk_inputs').select('id, nama_risiko, identifikasi_deskripsi, kode_risiko, nama_unit_kerja_id');
+        if (isManager && validUnitIds.length > 0) {
+            if (validUnitIds.length === 1) {
+                rQuery = rQuery.eq('nama_unit_kerja_id', validUnitIds[0]);
+            } else {
+                rQuery = rQuery.in('nama_unit_kerja_id', validUnitIds);
+            }
+        }
+        rQuery.then(({ data }: { data: any }) => setRisikoList((data ?? []) as RisikoItem[]));
+    }, [fetchData, isManager, validUnitIds]);
 
     const statuses = ['Aktif', 'Monitoring', 'Mitigasi', 'Selesai'];
     const statusColors: Record<string, string> = {
@@ -389,9 +407,11 @@ export default function MonitoringRisikoPage() {
                             {downloading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
                             <span>Laporan</span>
                         </button>
-                        <button className="btn-primary flex items-center gap-2" onClick={() => setShowModal(true)}>
-                            <Plus size={15} /> Tambah Data
-                        </button>
+                        {!isAuditor && (
+                            <button className="btn-primary flex items-center gap-2" onClick={() => setShowModal(true)}>
+                                <Plus size={15} /> Tambah Data
+                            </button>
+                        )}
                     </div>
                 }
             />

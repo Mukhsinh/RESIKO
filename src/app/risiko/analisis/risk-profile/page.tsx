@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAppSettings } from '@/hooks/useAppSettings';
+import { useUserProfile } from '@/hooks/useUserProfile';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { PageHeader, ScoreCard, FilterBar, TopActionBar } from '@/components/SharedUI';
@@ -85,13 +86,15 @@ const EMPTY_FORM = {
     status: 'Open',
 };
 
-function RiskModal({ row, onClose, onSave, units, riskInputs, saving }: {
+function RiskModal({ row, onClose, onSave, units, riskInputs, saving, isManager, validUnitIds }: {
     row: Partial<typeof EMPTY_FORM> | null;
     onClose: () => void;
     onSave: (data: typeof EMPTY_FORM) => void;
     units: WorkUnit[];
     riskInputs: RiskInputOption[];
     saving: boolean;
+    isManager: boolean;
+    validUnitIds: string[];
 }) {
     const [form, setForm] = useState({ ...EMPTY_FORM, ...(row ?? {}) });
     const f = (k: keyof typeof form, v: string | number) => setForm(prev => ({ ...prev, [k]: v }));
@@ -106,11 +109,21 @@ function RiskModal({ row, onClose, onSave, units, riskInputs, saving }: {
     const filteredRisks = form.unit_kerja_id
         ? riskInputs.filter(r => {
             if (!r.nama_unit_kerja_id) return true;
-            const rUnitName = r.master_work_units?.name;
-            if (rUnitName && selectedUnitName) {
-                return rUnitName.trim().toLowerCase() === selectedUnitName.trim().toLowerCase();
+
+            // Bridge cross-table IDs using isMatchUnit helper logic
+            if (r.nama_unit_kerja_id === form.unit_kerja_id) return true;
+
+            // If the manager logged in has their unit pre-filled, check if this risk aligns with their broader ID pool
+            if (isManager && validUnitIds.includes(r.nama_unit_kerja_id)) return true;
+
+            const selectedUnit = units.find(u => u.id === form.unit_kerja_id);
+            if (selectedUnit?.name && r.master_work_units?.name) {
+                // Ignore prefix for a robust comparison
+                const uName = selectedUnit.name.toLowerCase().replace(/^(instalasi|unit|ruang|pelayanan)\s+/i, '').trim();
+                const rName = r.master_work_units.name.toLowerCase().replace(/^(instalasi|unit|ruang|pelayanan)\s+/i, '').trim();
+                if (uName && rName && (uName.includes(rName) || rName.includes(uName))) return true;
             }
-            return r.nama_unit_kerja_id === form.unit_kerja_id;
+            return false;
         })
         : riskInputs;
 
@@ -363,6 +376,7 @@ function ViewModal({ row, onClose }: { row: RiskRow; onClose: () => void }) {
 /* ─── Main Page ──────────────────────────────────────────────────── */
 export default function RiskProfilePage() {
     const { settings } = useAppSettings();
+    const { profile, isManager, isAuditor, validUnitIds, isMatchUnit } = useUserProfile();
     const [search, setSearch] = useState('');
     const [year, setYear] = useState(String(new Date().getFullYear()));
     const [unitFilter, setUnitFilter] = useState('');
@@ -375,6 +389,13 @@ export default function RiskProfilePage() {
     const [viewRow, setViewRow] = useState<RiskRow | null>(null);
     const [editRow, setEditRow] = useState<Partial<typeof EMPTY_FORM> & { _id?: string } | null>(null);
 
+    // Auto-lock unit filter for unit managers
+    useEffect(() => {
+        if (isManager && profile?.unit_kerja_id) {
+            setUnitFilter(profile.unit_kerja_id);
+        }
+    }, [isManager, profile]);
+
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
@@ -382,14 +403,36 @@ export default function RiskProfilePage() {
                 .from('manajemen_risiko')
                 .select('*, unit_kerja(id, nama_unit)')
                 .order('created_at', { ascending: false });
+
             if (year) q = q.eq('tahun', Number(year));
 
+            // For non-managers, if a specific unit is selected from dropdown, apply SQL filter
+            if (!isManager && unitFilter) {
+                q = q.eq('unit_kerja_id', unitFilter);
+            }
+
             const { data, error } = await q;
-            if (error) { console.error('Error fetching risk profile:', error); setRows([]); }
-            else setRows((data as RiskRow[]) ?? []);
-        } catch (e) { console.error(e); setRows([]); }
-        finally { setLoading(false); }
-    }, [year]);
+
+            if (error) {
+                console.error('Error fetching risk profile:', error);
+
+                // Fallback attempt without year filter in case of severe errors
+                const { data: fallbackData } = await supabase
+                    .from('manajemen_risiko')
+                    .select('*, unit_kerja(id, nama_unit)')
+                    .order('created_at', { ascending: false });
+
+                setRows((fallbackData as RiskRow[]) ?? []);
+            } else {
+                setRows((data as RiskRow[]) ?? []);
+            }
+        } catch (e) {
+            console.error(e);
+            setRows([]);
+        } finally {
+            setLoading(false);
+        }
+    }, [year, isManager, unitFilter]);
 
     useEffect(() => {
         fetchData();
@@ -411,7 +454,9 @@ export default function RiskProfilePage() {
 
     const filtered = rows.filter(d => {
         const matchSearch = (d.identifikasi_risiko || '').toLowerCase().includes(search.toLowerCase()) || (d.kode_risiko || '').toLowerCase().includes(search.toLowerCase());
-        const matchUnit = unitFilter ? d.unit_kerja_id === unitFilter : true;
+        const matchUnit = isManager
+            ? isMatchUnit(d.unit_kerja_id, d.unit_kerja)
+            : (unitFilter ? d.unit_kerja_id === unitFilter || (d.unit_kerja as any)?.id === unitFilter : true);
         return matchSearch && matchUnit;
     });
 
@@ -1025,11 +1070,15 @@ export default function RiskProfilePage() {
             key: 'actions', label: 'Aksi', render: r => (
                 <div className="flex gap-1 justify-center">
                     <button title="Lihat detail" className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded" onClick={() => setViewRow(r)}><Eye size={15} /></button>
-                    <button title="Edit" className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded" onClick={() => {
-                        setEditRow({ ...EMPTY_FORM, ...r, tahun: String(r.tahun), _id: r.id });
-                        setShowModal(true);
-                    }}><Edit size={15} /></button>
-                    <button title="Hapus" className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded" onClick={() => handleDelete(r)}><Trash2 size={15} /></button>
+                    {!isAuditor && (
+                        <>
+                            <button title="Edit" className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded" onClick={() => {
+                                setEditRow({ ...EMPTY_FORM, ...r, tahun: String(r.tahun), _id: r.id });
+                                setShowModal(true);
+                            }}><Edit size={15} /></button>
+                            <button title="Hapus" className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded" onClick={() => handleDelete(r)}><Trash2 size={15} /></button>
+                        </>
+                    )}
                 </div>
             )
         },
@@ -1045,6 +1094,8 @@ export default function RiskProfilePage() {
                     units={units}
                     riskInputs={riskInputs}
                     saving={saving}
+                    isManager={isManager}
+                    validUnitIds={validUnitIds}
                 />
             )}
             {viewRow && <ViewModal row={viewRow} onClose={() => setViewRow(null)} />}
@@ -1102,22 +1153,30 @@ export default function RiskProfilePage() {
                             searchValue={search} onSearchChange={setSearch} searchPlaceholder="Cari identifikasi risiko..."
                             yearValue={year} onYearChange={setYear}
                             extraFilters={
-                                <select className="filter-select w-44" value={unitFilter} onChange={e => setUnitFilter(e.target.value)} title="Filter Unit Kerja">
-                                    <option value="">Semua Unit Kerja</option>
-                                    {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                                </select>
+                                isManager ? (
+                                    <div className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold border border-slate-200">
+                                        {units.find(u => u.id === unitFilter)?.name || profile?.unit_kerja_name || 'Unit Anda'}
+                                    </div>
+                                ) : (
+                                    <select className="filter-select w-44" value={unitFilter} onChange={e => setUnitFilter(e.target.value)} title="Filter Unit Kerja">
+                                        <option value="">Semua Unit Kerja</option>
+                                        {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                                    </select>
+                                )
                             }
                         />
                     }
                     actions={
                         <>
-                            <button className="btn-secondary btn-sm"><Download size={14} /><span className="hidden sm:inline">Template</span></button>
-                            <button className="btn-secondary btn-sm"><Upload size={14} /><span className="hidden sm:inline">Import</span></button>
+                            {!isAuditor && <button className="btn-secondary btn-sm"><Download size={14} /><span className="hidden sm:inline">Template</span></button>}
+                            {!isAuditor && <button className="btn-secondary btn-sm"><Upload size={14} /><span className="hidden sm:inline">Import</span></button>}
                             <button className="btn-secondary btn-sm border-primary/20 text-primary hover:bg-primary/5" onClick={handleExportPDF}><FileText size={14} /><span className="hidden sm:inline">Laporan</span></button>
-                            <button className="btn-primary btn-sm" onClick={() => { setEditRow(null); setShowModal(true); }}>
-                                {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                                <span>Tambah Data</span>
-                            </button>
+                            {!isAuditor && (
+                                <button className="btn-primary btn-sm" onClick={() => { setEditRow(null); setShowModal(true); }}>
+                                    {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                                    <span>Tambah Data</span>
+                                </button>
+                            )}
                         </>
                     }
                 />

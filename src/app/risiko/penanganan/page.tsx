@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAppSettings } from '@/hooks/useAppSettings';
+import { useUserProfile } from '@/hooks/useUserProfile';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { type ManajemenRisiko } from '@/lib/supabase';
@@ -49,6 +50,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function PenangananRisikoPage() {
     const { settings } = useAppSettings();
+    const { profile, isManager, isAuditor, validUnitIds, isMatchUnit } = useUserProfile();
     const [data, setData] = useState<Penanganan[]>([]);
     const [risikoList, setRisikoList] = useState<ManajemenRisiko[]>([]);
     const [units, setUnits] = useState<{ id: string; nama_unit: string }[]>([]);
@@ -271,7 +273,7 @@ export default function PenangananRisikoPage() {
 
     const fetchData = useCallback(async () => {
         setLoading(true);
-        let query = supabase.from('penanganan_risiko').select('*, unit_kerja(nama_unit), manajemen_risiko(identifikasi_risiko, skor_risiko)');
+        let query = supabase.from('penanganan_risiko').select('*, unit_kerja(id, nama_unit), manajemen_risiko(identifikasi_risiko, skor_risiko)');
         if (year) query = query.eq('tahun', Number(year));
 
         const { data: res } = await query;
@@ -279,13 +281,16 @@ export default function PenangananRisikoPage() {
             setData((res as unknown as Penanganan[]).map(d => ({ ...d, risiko: d.manajemen_risiko })) || []);
         }
         setLoading(false);
-    }, [year]);
+    }, [year, isManager, validUnitIds]);
 
     useEffect(() => {
         fetchData();
         supabase.from('unit_kerja').select('id, nama_unit').then(({ data }: { data: any }) => setUnits(data || []));
-        supabase.from('manajemen_risiko').select('*').then(({ data }: { data: any }) => setRisikoList(data || []));
-    }, [fetchData]);
+        let mrQuery = supabase.from('manajemen_risiko').select('*');
+        // No manual RLS replication for managers on client to avoid UI uuid parsing errors.
+        // Let Supabase RLS handle manager unit isolation securely.
+        mrQuery.then(({ data }: { data: any }) => setRisikoList(data || []));
+    }, [fetchData, isManager, validUnitIds]);
 
     const filtered = data.filter(d =>
         d.rencana_aksi.toLowerCase().includes(search.toLowerCase()) ||
@@ -296,7 +301,14 @@ export default function PenangananRisikoPage() {
     const berjalan = data.filter(d => d.status === 'Berjalan').length;
     const terlambat = data.filter(d => d.status === 'Terlambat').length;
 
-    const openAdd = () => { setEditId(null); setForm(defaultForm); setShowModal(true); };
+    const openAdd = () => {
+        setEditId(null);
+        setForm({
+            ...defaultForm,
+            unit_kerja_id: isManager && profile?.unit_kerja_id ? profile.unit_kerja_id : '',
+        });
+        setShowModal(true);
+    };
     const openEdit = (row: Penanganan) => {
         setEditId(row.id);
         setForm({ manajemen_risiko_id: row.manajemen_risiko_id, unit_kerja_id: row.unit_kerja_id, tahun: row.tahun, jenis_penanganan: row.jenis_penanganan, rencana_aksi: row.rencana_aksi, penanggung_jawab: row.penanggung_jawab, target_selesai: row.target_selesai ?? '', status: row.status, progres: row.progres });
@@ -354,10 +366,12 @@ export default function PenangananRisikoPage() {
                             {downloading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
                             <span className="hidden sm:inline">Laporan</span>
                         </button>
-                        <button className="btn-primary" onClick={openAdd}><Plus size={15} /><span>Tambah</span></button>
+                        {!isAuditor && (
+                            <button className="btn-primary" onClick={openAdd}><Plus size={15} /><span>Tambah</span></button>
+                        )}
                     </>}
                 />
-                <DataTable columns={columns} data={filtered} onEdit={openEdit} onDelete={handleDelete} onView={openEdit} isLoading={loading} />
+                <DataTable columns={columns} data={filtered} onEdit={isAuditor ? undefined : openEdit} onDelete={isAuditor ? undefined : handleDelete} onView={openEdit} isLoading={loading} />
             </div>
 
             {showModal && (

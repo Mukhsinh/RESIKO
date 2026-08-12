@@ -165,8 +165,12 @@ export default function Sidebar() {
     };
 
     const filteredNavItems = navItems.filter(item => {
-        if (profile?.role === 'user_unit') {
+        const r = profile?.role;
+        if (r === 'user_unit' || r === 'manager') {
             return !['Master Data', 'Pengaturan', 'Buku Pedoman'].includes(item.label);
+        }
+        if (r === 'auditor') {
+            return !['Master Data', 'Pengaturan'].includes(item.label);
         }
         return true;
     });
@@ -340,7 +344,7 @@ export default function Sidebar() {
                                 </p>
                                 <div className="flex flex-wrap items-center gap-1 mt-1.5">
                                     <span className="text-[9px] font-bold text-[#137fec] bg-blue-50 border border-blue-100/50 px-1.5 py-0.5 rounded-full uppercase tracking-wider">
-                                        {profile.role === 'superadmin' ? 'superadmin' : profile.role}
+                                        {profile.role === 'superadmin' || profile.role === 'admin' ? 'Admin' : (profile.role === 'auditor' ? 'Auditor' : 'Manager')}
                                     </span>
                                 </div>
                             </div>

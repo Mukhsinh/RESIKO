@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAppSettings } from '@/hooks/useAppSettings';
+import { useUserProfile } from '@/hooks/useUserProfile';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { PageHeader, ScoreCard, FilterBar, TopActionBar } from '@/components/SharedUI';
@@ -371,6 +372,7 @@ function ViewModal({ row, onClose }: { row: RiskRow; onClose: () => void }) {
 /* ─── Main Page ──────────────────────────────────────────────────── */
 export default function ResidualRiskPage() {
     const { settings } = useAppSettings();
+    const { profile, isManager, isAuditor, validUnitIds, isMatchUnit } = useUserProfile();
     const [search, setSearch] = useState('');
     const [year, setYear] = useState(String(new Date().getFullYear()));
     const [unitFilter, setUnitFilter] = useState('');
@@ -383,6 +385,13 @@ export default function ResidualRiskPage() {
     const [viewRow, setViewRow] = useState<RiskRow | null>(null);
     const [editRow, setEditRow] = useState<Partial<typeof EMPTY_FORM> & { _id?: string } | null>(null);
 
+    // Auto-lock unit filter for unit managers
+    useEffect(() => {
+        if (isManager && profile?.unit_kerja_id) {
+            setUnitFilter(profile.unit_kerja_id);
+        }
+    }, [isManager, profile]);
+
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
@@ -390,13 +399,36 @@ export default function ResidualRiskPage() {
                 .from('manajemen_risiko')
                 .select('*, unit_kerja(id, nama_unit)')
                 .order('created_at', { ascending: false });
+
             if (year) q = q.eq('tahun', Number(year));
+
+            // For non-managers, if a specific unit is selected from dropdown, apply SQL filter
+            if (!isManager && unitFilter) {
+                q = q.eq('unit_kerja_id', unitFilter);
+            }
+
             const { data, error } = await q;
-            if (error) { console.error('Error fetching:', error); setRows([]); }
-            else setRows((data as RiskRow[]) ?? []);
-        } catch (e) { console.error(e); setRows([]); }
-        finally { setLoading(false); }
-    }, [year]);
+
+            if (error) {
+                console.error('Error fetching fallback data:', error);
+
+                // Fallback attempt without year filter in case of severe errors
+                const { data: fallbackData } = await supabase
+                    .from('manajemen_risiko')
+                    .select('*, unit_kerja(id, nama_unit)')
+                    .order('created_at', { ascending: false });
+
+                setRows((fallbackData as RiskRow[]) ?? []);
+            } else {
+                setRows((data as RiskRow[]) ?? []);
+            }
+        } catch (e) {
+            console.error(e);
+            setRows([]);
+        } finally {
+            setLoading(false);
+        }
+    }, [year, isManager, unitFilter]);
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -417,7 +449,7 @@ export default function ResidualRiskPage() {
     const filtered = rows.filter(d => {
         const matchSearch = (d.identifikasi_risiko || '').toLowerCase().includes(search.toLowerCase()) ||
             (d.kode_risiko || '').toLowerCase().includes(search.toLowerCase());
-        const matchUnit = unitFilter ? d.unit_kerja_id === unitFilter : true;
+        const matchUnit = isManager ? isMatchUnit(d.unit_kerja_id, d.unit_kerja) : (unitFilter ? d.unit_kerja_id === unitFilter || (d.unit_kerja as any)?.id === unitFilter : true);
         return matchSearch && matchUnit;
     });
 
@@ -1024,11 +1056,15 @@ export default function ResidualRiskPage() {
             key: 'actions', label: 'Aksi', render: r => (
                 <div className="flex gap-1 justify-center">
                     <button className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded" title="Lihat detail" onClick={() => setViewRow(r)}><Eye size={15} /></button>
-                    <button className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded" title="Edit" onClick={() => {
-                        setEditRow({ ...EMPTY_FORM, ...r, tahun: String(r.tahun), _id: r.id });
-                        setShowModal(true);
-                    }}><Edit size={15} /></button>
-                    <button className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded" title="Hapus" onClick={() => handleDelete(r)}><Trash2 size={15} /></button>
+                    {!isAuditor && (
+                        <>
+                            <button className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded" title="Edit" onClick={() => {
+                                setEditRow({ ...EMPTY_FORM, ...r, tahun: String(r.tahun), _id: r.id });
+                                setShowModal(true);
+                            }}><Edit size={15} /></button>
+                            <button className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded" title="Hapus" onClick={() => handleDelete(r)}><Trash2 size={15} /></button>
+                        </>
+                    )}
                 </div>
             )
         },
@@ -1083,10 +1119,16 @@ export default function ResidualRiskPage() {
                             searchValue={search} onSearchChange={setSearch} searchPlaceholder="Cari risiko..."
                             yearValue={year} onYearChange={setYear}
                             extraFilters={
-                                <select className="filter-select w-44" value={unitFilter} onChange={e => setUnitFilter(e.target.value)} title="Filter Unit Kerja">
-                                    <option value="">Semua Unit Kerja</option>
-                                    {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                                </select>
+                                isManager ? (
+                                    <div className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold border border-slate-200">
+                                        {units.find(u => u.id === unitFilter)?.name || profile?.unit_kerja_name || 'Unit Anda'}
+                                    </div>
+                                ) : (
+                                    <select className="filter-select w-44" value={unitFilter} onChange={e => setUnitFilter(e.target.value)} title="Filter Unit Kerja">
+                                        <option value="">Semua Unit Kerja</option>
+                                        {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                                    </select>
+                                )
                             }
                         />
                     }
@@ -1095,10 +1137,12 @@ export default function ResidualRiskPage() {
                             <button className="btn-secondary btn-sm border-primary/20 text-primary hover:bg-primary/5 flex items-center gap-2" onClick={handleExportPDF}>
                                 <FileText size={14} /><span>Laporan</span>
                             </button>
-                            <button className="btn-primary btn-sm flex items-center gap-2" onClick={() => { setEditRow(null); setShowModal(true); }}>
-                                {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                                <span>Tambah Data</span>
-                            </button>
+                            {!isAuditor && (
+                                <button className="btn-primary btn-sm flex items-center gap-2" onClick={() => { setEditRow(null); setShowModal(true); }}>
+                                    {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                                    <span>Tambah Data</span>
+                                </button>
+                            )}
                         </>
                     }
                 />

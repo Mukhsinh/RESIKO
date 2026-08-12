@@ -77,7 +77,7 @@ const defaultForm: FormData = {
 };
 
 export default function IdentifikasiRisikoPage() {
-    const { profile } = useUserProfile();
+    const { profile, isManager, isAuditor } = useUserProfile();
     const { settings } = useAppSettings();
     const [data, setData] = useState<RiskInput[]>([]);
     const [units, setUnits] = useState<{ id: string; nama_unit: string }[]>([]);
@@ -139,10 +139,16 @@ export default function IdentifikasiRisikoPage() {
 
     // Auto-lock unit filter for unit managers
     useEffect(() => {
-        if (profile?.role === 'user_unit' && profile.unit_kerja_id) {
-            setFilterUnit(profile.unit_kerja_id);
+        if (isManager && (profile?.unit_kerja_name || profile?.unit_kerja_id)) {
+            const matchName = profile.unit_kerja_name?.toLowerCase();
+            const matchedUnit = units.find(item => item.nama_unit.toLowerCase() === matchName || item.id === profile.unit_kerja_id);
+            if (matchedUnit) {
+                setFilterUnit(matchedUnit.id);
+            } else if (profile.unit_kerja_id) {
+                setFilterUnit(profile.unit_kerja_id);
+            }
         }
-    }, [profile]);
+    }, [isManager, profile, units]);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -158,10 +164,40 @@ export default function IdentifikasiRisikoPage() {
                 query = query.gte('identifikasi_tanggal', yearStart).lte('identifikasi_tanggal', yearEnd);
             }
 
-            // Apply unit filter
-            const unitToFilter = profile?.role === 'user_unit' ? profile.unit_kerja_id : (filterUnit === 'all' ? null : filterUnit);
-            if (unitToFilter) {
-                query = query.eq('nama_unit_kerja_id', unitToFilter);
+            // Determine target unit IDs (bridge unit_kerja.id with master_work_units.id)
+            const targetUnitIds: string[] = [];
+            if (isManager && profile?.unit_kerja_id) {
+                targetUnitIds.push(profile.unit_kerja_id);
+
+                let uName = profile.unit_kerja_name;
+                if (!uName) {
+                    const { data: ukData } = await supabase
+                        .from('unit_kerja')
+                        .select('nama_unit')
+                        .eq('id', profile.unit_kerja_id)
+                        .maybeSingle();
+                    if (ukData?.nama_unit) uName = ukData.nama_unit;
+                }
+
+                if (uName) {
+                    const { data: mwu } = await supabase
+                        .from('master_work_units')
+                        .select('id')
+                        .ilike('name', uName);
+                    if (mwu && mwu.length > 0) {
+                        mwu.forEach(m => {
+                            if (!targetUnitIds.includes(m.id)) targetUnitIds.push(m.id);
+                        });
+                    }
+                }
+            } else if (filterUnit && filterUnit !== 'all') {
+                targetUnitIds.push(filterUnit);
+            }
+
+            if (targetUnitIds.length === 1) {
+                query = query.eq('nama_unit_kerja_id', targetUnitIds[0]);
+            } else if (targetUnitIds.length > 1) {
+                query = query.in('nama_unit_kerja_id', targetUnitIds);
             }
 
             const { data: rows, error } = await query;
@@ -177,7 +213,7 @@ export default function IdentifikasiRisikoPage() {
         } finally {
             setLoading(false);
         }
-    }, [year, filterUnit, profile]);
+    }, [year, filterUnit, isManager, profile]);
 
     useEffect(() => {
         fetchData();
@@ -298,8 +334,10 @@ export default function IdentifikasiRisikoPage() {
         setEditId(null);
         const newForm = { ...defaultForm };
         // Auto-set unit for unit managers
-        if (profile?.role === 'user_unit' && profile.unit_kerja_id) {
-            newForm.nama_unit_kerja_id = profile.unit_kerja_id;
+        if ((profile?.role === 'user_unit' || isManager) && (profile?.unit_kerja_name || profile?.unit_kerja_id)) {
+            const matchName = profile.unit_kerja_name?.toLowerCase();
+            const matchedUnit = units.find(item => item.nama_unit.toLowerCase() === matchName || item.id === profile.unit_kerja_id);
+            newForm.nama_unit_kerja_id = matchedUnit ? matchedUnit.id : (profile.unit_kerja_id || '');
         }
         setForm(newForm);
         setShowModal(true);
@@ -608,9 +646,9 @@ export default function IdentifikasiRisikoPage() {
                                 searchValue={search} onSearchChange={setSearch} searchPlaceholder="Cari risiko..."
                                 yearValue={year} onYearChange={setYear}
                             />
-                            {profile?.role === 'user_unit' ? (
+                            {isManager ? (
                                 <div className="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold border border-slate-200">
-                                    {units.find(u => u.id === filterUnit)?.nama_unit || 'Unit Anda'}
+                                    {units.find(u => u.id === filterUnit)?.nama_unit || profile?.unit_kerja_name || 'Unit Anda'}
                                 </div>
                             ) : (
                                 <select className="form-input text-xs py-2 w-48" value={filterUnit} onChange={e => setFilterUnit(e.target.value)}>
@@ -622,14 +660,14 @@ export default function IdentifikasiRisikoPage() {
                     }
                     actions={
                         <>
-                            <button className="btn-secondary"><Download size={15} /><span className="hidden sm:inline">Template</span></button>
-                            <button className="btn-secondary"><Upload size={15} /><span className="hidden sm:inline">Import</span></button>
+                            {!isAuditor && <button className="btn-secondary"><Download size={15} /><span className="hidden sm:inline">Template</span></button>}
+                            {!isAuditor && <button className="btn-secondary"><Upload size={15} /><span className="hidden sm:inline">Import</span></button>}
                             <button className="btn-secondary" onClick={handleExportPDF}><FileText size={15} /><span className="hidden sm:inline">Laporan</span></button>
-                            <button className="btn-primary" onClick={openAdd}><Plus size={15} /><span>Tambah</span></button>
+                            {!isAuditor && <button className="btn-primary" onClick={openAdd}><Plus size={15} /><span>Tambah</span></button>}
                         </>
                     }
                 />
-                <DataTable columns={columns} data={filtered} onEdit={openEdit} onDelete={handleDelete} onView={openEdit} isLoading={loading} />
+                <DataTable columns={columns} data={filtered} onEdit={isAuditor ? undefined : openEdit} onDelete={isAuditor ? undefined : handleDelete} onView={openEdit} isLoading={loading} />
             </div>
 
             {showModal && (

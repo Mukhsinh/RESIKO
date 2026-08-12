@@ -327,11 +327,13 @@ export default function DashboardPage() {
                             </h3>
                             <p className="text-xs text-slate-400 font-medium">Berdasarkan proporsi kuantitas risiko aktif</p>
                         </div>
-                        <div className="h-64 my-4 flex items-center justify-center relative">
+                        <div className="h-64 w-full my-4 relative block">
                             {riskDonutData.length === 0 ? (
-                                <span className="text-xs text-slate-400 font-medium">Tidak ada data risiko untuk ditampilkan</span>
+                                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                    <span className="text-xs text-slate-400 font-medium">Tidak ada data risiko untuk ditampilkan</span>
+                                </div>
                             ) : (
-                                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                                <ResponsiveContainer width="99%" height="100%">
                                     <PieChart>
                                         <Pie
                                             data={riskDonutData}
@@ -383,8 +385,8 @@ export default function DashboardPage() {
                                 <Target size={16} className="text-[#137fec]" /> Tren Pencapaian KPI per Unit Kerja
                             </h3>
                             <p className="text-xs text-slate-400 font-medium mb-6">Membandingkan target sasaran strategis dengan capaian realisasi</p>
-                            <div className="h-72 w-full">
-                                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                            <div className="h-72 w-full block relative">
+                                <ResponsiveContainer width="99%" height="100%">
                                     <BarChart data={kpiPerUnitData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                                         <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} fontWeight="600" />

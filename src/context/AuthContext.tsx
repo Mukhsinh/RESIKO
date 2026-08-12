@@ -11,6 +11,8 @@ export interface UserProfile {
     role: string;
     unit_kerja_id: string | null;
     unit_kerja_name?: string;
+    master_work_unit_id?: string | null;
+    all_unit_ids?: string[];
 }
 
 interface AuthContextType {
@@ -69,13 +71,60 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             if (pErr) console.warn('Profile fetch warning:', pErr.message);
 
             let unitName = 'Semua Unit';
+            let masterWorkUnitId: string | null = null;
+            let realUnitKerjaId: string | null = profileData?.unit_kerja_id || null;
+            const allUnitIds: string[] = [];
+
             if (profileData?.unit_kerja_id) {
+                allUnitIds.push(profileData.unit_kerja_id);
+
+                // 1. Try finding in unit_kerja
                 const { data: unit } = await supabase
                     .from('unit_kerja')
-                    .select('nama_unit')
+                    .select('id, nama_unit')
                     .eq('id', profileData.unit_kerja_id)
                     .maybeSingle();
-                if (unit) unitName = unit.nama_unit;
+
+                if (unit?.nama_unit) {
+                    unitName = unit.nama_unit;
+                    realUnitKerjaId = unit.id;
+                } else {
+                    // 2. If not in unit_kerja, try master_work_units
+                    const { data: mwu } = await supabase
+                        .from('master_work_units')
+                        .select('id, name')
+                        .eq('id', profileData.unit_kerja_id)
+                        .maybeSingle();
+
+                    if (mwu?.name) {
+                        unitName = mwu.name;
+                        masterWorkUnitId = mwu.id;
+                    }
+                }
+
+                // 3. Resolve ALL matching unit IDs by unitName across both tables (with % wildcard)
+                if (unitName && unitName !== 'Semua Unit') {
+                    const cleanName = unitName.replace(/^(instalasi|unit|ruang|pelayanan)\s+/i, '').trim();
+                    const searchTerm = cleanName || unitName;
+
+                    const [ukRes, mwuRes] = await Promise.all([
+                        supabase.from('unit_kerja').select('id').ilike('nama_unit', `%${searchTerm}%`),
+                        supabase.from('master_work_units').select('id').ilike('name', `%${searchTerm}%`),
+                    ]);
+
+                    if (ukRes.data) {
+                        ukRes.data.forEach((u: any) => {
+                            if (!allUnitIds.includes(u.id)) allUnitIds.push(u.id);
+                            if (!realUnitKerjaId) realUnitKerjaId = u.id;
+                        });
+                    }
+                    if (mwuRes.data) {
+                        mwuRes.data.forEach((m: any) => {
+                            if (!allUnitIds.includes(m.id)) allUnitIds.push(m.id);
+                            if (!masterWorkUnitId) masterWorkUnitId = m.id;
+                        });
+                    }
+                }
             }
 
             const newProfile: UserProfile = {
@@ -83,8 +132,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 email: email,
                 full_name: email || 'User',
                 role: profileData?.role || 'user',
-                unit_kerja_id: profileData?.unit_kerja_id || null,
+                unit_kerja_id: realUnitKerjaId,
                 unit_kerja_name: unitName,
+                master_work_unit_id: masterWorkUnitId,
+                all_unit_ids: allUnitIds,
             };
 
             setProfile(newProfile);
