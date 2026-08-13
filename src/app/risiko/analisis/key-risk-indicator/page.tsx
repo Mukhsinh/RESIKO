@@ -35,7 +35,13 @@ interface KRIRow {
 }
 
 interface WorkUnit { id: string; name: string; }
-interface RiskInputOption { id: string; kode_risiko?: string; nama_risiko?: string; }
+interface RiskInputOption {
+    id: string;
+    kode_risiko?: string;
+    nama_risiko?: string;
+    nama_unit_kerja_id?: string;
+    master_work_units?: { name: string };
+}
 
 /* ─── Helpers ─────────────────────────────────────────────────── */
 function getStatusColor(row: KRIRow) {
@@ -91,6 +97,20 @@ function KRIModal({ row, onClose, onSave, units, riskInputs, saving }: {
         if (risk) { f('kode_risiko', risk.kode_risiko || ''); f('nama_kri', risk.nama_risiko || ''); }
     };
 
+    const filteredRiskInputs = form.unit_kerja_id
+        ? riskInputs.filter(r => {
+            if (!r.nama_unit_kerja_id) return true;
+            if (r.nama_unit_kerja_id === form.unit_kerja_id) return true;
+            const selectedUnit = units.find(u => u.id === form.unit_kerja_id);
+            if (selectedUnit?.name && r.master_work_units?.name) {
+                const uName = selectedUnit.name.toLowerCase().replace(/^(instalasi|unit|ruang|pelayanan)\s+/i, '').trim();
+                const rName = r.master_work_units.name.toLowerCase().replace(/^(instalasi|unit|ruang|pelayanan)\s+/i, '').trim();
+                if (uName && rName && (uName.includes(rName) || rName.includes(uName))) return true;
+            }
+            return false;
+        })
+        : riskInputs;
+
     const aktual = Number(form.nilai_aktual);
     const atas = Number(form.batas_atas);
     const melebihi = atas > 0 && aktual > atas;
@@ -111,7 +131,19 @@ function KRIModal({ row, onClose, onSave, units, riskInputs, saving }: {
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="form-label">Unit Kerja *</label>
-                            <select className="form-input w-full" value={form.unit_kerja_id} onChange={e => f('unit_kerja_id', e.target.value)}>
+                            <select
+                                className="form-input w-full"
+                                value={form.unit_kerja_id}
+                                onChange={e => {
+                                    const newUnit = e.target.value;
+                                    setForm(prev => ({
+                                        ...prev,
+                                        unit_kerja_id: newUnit,
+                                        risk_input_id: '',
+                                        kode_risiko: '',
+                                    }));
+                                }}
+                            >
                                 <option value="">-- Pilih Unit --</option>
                                 {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                             </select>
@@ -129,7 +161,7 @@ function KRIModal({ row, onClose, onSave, units, riskInputs, saving }: {
                         <label className="form-label">Risiko Terkait (dari Identifikasi Risiko)</label>
                         <select className="form-input w-full" value={form.risk_input_id} onChange={e => handleRiskSelect(e.target.value)}>
                             <option value="">-- Pilih Risiko --</option>
-                            {riskInputs.map(r => (
+                            {filteredRiskInputs.map(r => (
                                 <option key={r.id} value={r.id}>
                                     {r.kode_risiko ? `[${r.kode_risiko}] ` : ''}{r.nama_risiko || 'Tanpa Nama'}
                                 </option>
@@ -349,7 +381,7 @@ export default function KeyRiskIndicatorPage() {
     useEffect(() => {
         supabase.from('unit_kerja').select('id, nama_unit').then(({ data }: { data: any }) =>
             setUnits((data ?? []).map((u: any) => ({ id: u.id, name: u.nama_unit }))));
-        supabase.from('risk_inputs').select('id, kode_risiko, nama_risiko').then(({ data }: { data: any }) =>
+        supabase.from('risk_inputs').select('id, kode_risiko, nama_risiko, nama_unit_kerja_id, master_work_units(name)').then(({ data }: { data: any }) =>
             setRiskInputs((data ?? []) as RiskInputOption[]));
     }, []);
 
@@ -596,7 +628,7 @@ export default function KeyRiskIndicatorPage() {
                         <>
                             <button className="btn-secondary border-primary/20 text-primary hover:bg-primary/5 flex items-center gap-1.5" onClick={handleExportPDF}><FileText size={15} /><span className="hidden sm:inline">Laporan</span></button>
                             {!isAuditor && (
-                                <button className="btn-primary flex items-center gap-1.5" onClick={() => { setEditRow(null); setShowModal(true); }}>
+                                <button className="btn-primary flex items-center gap-1.5" onClick={() => { setEditRow(unitFilter ? { ...EMPTY_FORM, unit_kerja_id: unitFilter } : null); setShowModal(true); }}>
                                     <Plus size={15} /><span>Tambah KRI</span>
                                 </button>
                             )}

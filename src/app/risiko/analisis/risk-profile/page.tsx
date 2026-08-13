@@ -86,8 +86,8 @@ const EMPTY_FORM = {
     status: 'Open',
 };
 
-function RiskModal({ row, onClose, onSave, units, riskInputs, saving, isManager, validUnitIds }: {
-    row: Partial<typeof EMPTY_FORM> | null;
+function RiskModal({ row, onClose, onSave, units, riskInputs, saving, isManager, validUnitIds, savedRows }: {
+    row: Partial<typeof EMPTY_FORM> & { _id?: string; id?: string } | null;
     onClose: () => void;
     onSave: (data: typeof EMPTY_FORM) => void;
     units: WorkUnit[];
@@ -95,6 +95,7 @@ function RiskModal({ row, onClose, onSave, units, riskInputs, saving, isManager,
     saving: boolean;
     isManager: boolean;
     validUnitIds: string[];
+    savedRows?: RiskRow[];
 }) {
     const [form, setForm] = useState({ ...EMPTY_FORM, ...(row ?? {}) });
     const f = (k: keyof typeof form, v: string | number) => setForm(prev => ({ ...prev, [k]: v }));
@@ -106,7 +107,11 @@ function RiskModal({ row, onClose, onSave, units, riskInputs, saving, isManager,
     const selectedUnit = units.find(u => u.id === form.unit_kerja_id);
     const selectedUnitName = selectedUnit?.name;
 
-    const filteredRisks = form.unit_kerja_id
+    // Exclude saved risks (except for the row currently being edited)
+    const currentEditId = (row as any)?._id || (row as any)?.id;
+    const otherSavedRows = (savedRows || []).filter(sr => sr.id !== currentEditId);
+
+    const filteredRisks = (form.unit_kerja_id
         ? riskInputs.filter(r => {
             if (!r.nama_unit_kerja_id) return true;
 
@@ -125,7 +130,17 @@ function RiskModal({ row, onClose, onSave, units, riskInputs, saving, isManager,
             }
             return false;
         })
-        : riskInputs;
+        : riskInputs
+    ).filter(r => {
+        const isAlreadySaved = otherSavedRows.some(sr => {
+            if ((sr as any).risk_input_id && (sr as any).risk_input_id === r.id) return true;
+            if (r.kode_risiko && sr.kode_risiko && sr.kode_risiko.trim().toLowerCase() === r.kode_risiko.trim().toLowerCase()) return true;
+            const rTitle = (r.nama_risiko || r.identifikasi_deskripsi || '').trim().toLowerCase();
+            if (rTitle && sr.identifikasi_risiko && sr.identifikasi_risiko.trim().toLowerCase() === rTitle) return true;
+            return false;
+        });
+        return !isAlreadySaved;
+    });
 
     const handleRiskSelect = (riskId: string) => {
         f('risk_input_id', riskId);
@@ -1096,6 +1111,7 @@ export default function RiskProfilePage() {
                     saving={saving}
                     isManager={isManager}
                     validUnitIds={validUnitIds}
+                    savedRows={rows}
                 />
             )}
             {viewRow && <ViewModal row={viewRow} onClose={() => setViewRow(null)} />}

@@ -1133,17 +1133,9 @@ export default function ResidualRiskPage() {
                         />
                     }
                     actions={
-                        <>
-                            <button className="btn-secondary btn-sm border-primary/20 text-primary hover:bg-primary/5 flex items-center gap-2" onClick={handleExportPDF}>
-                                <FileText size={14} /><span>Laporan</span>
-                            </button>
-                            {!isAuditor && (
-                                <button className="btn-primary btn-sm flex items-center gap-2" onClick={() => { setEditRow(null); setShowModal(true); }}>
-                                    {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                                    <span>Tambah Data</span>
-                                </button>
-                            )}
-                        </>
+                        <button className="btn-secondary btn-sm border-primary/20 text-primary hover:bg-primary/5 flex items-center gap-2" onClick={handleExportPDF}>
+                            <FileText size={14} /><span>Laporan</span>
+                        </button>
                     }
                 />
                 <DataTable columns={columns} data={filtered} isLoading={loading} />
