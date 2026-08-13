@@ -131,16 +131,29 @@ function RiskModal({ row, onClose, onSave, units, riskInputs, saving, isManager,
             return false;
         })
         : riskInputs
-    ).filter(r => {
-        const isAlreadySaved = otherSavedRows.some(sr => {
-            if ((sr as any).risk_input_id && (sr as any).risk_input_id === r.id) return true;
-            if (r.kode_risiko && sr.kode_risiko && sr.kode_risiko.trim().toLowerCase() === r.kode_risiko.trim().toLowerCase()) return true;
-            const rTitle = (r.nama_risiko || r.identifikasi_deskripsi || '').trim().toLowerCase();
-            if (rTitle && sr.identifikasi_risiko && sr.identifikasi_risiko.trim().toLowerCase() === rTitle) return true;
-            return false;
+    )
+        .filter((r: RiskInputOption) => {
+            const isAlreadySaved = otherSavedRows.some(sr => {
+                if ((sr as any).risk_input_id && (sr as any).risk_input_id === r.id) return true;
+                if (r.kode_risiko && sr.kode_risiko && sr.kode_risiko.trim().toLowerCase() === r.kode_risiko.trim().toLowerCase()) return true;
+                const rTitle = (r.nama_risiko || r.identifikasi_deskripsi || '').trim().toLowerCase();
+                if (rTitle && sr.identifikasi_risiko && sr.identifikasi_risiko.trim().toLowerCase() === rTitle) return true;
+                return false;
+            });
+            return !isAlreadySaved;
+        })
+        .sort((a: RiskInputOption, b: RiskInputOption) => {
+            const codeA = a.kode_risiko || '';
+            const codeB = b.kode_risiko || '';
+            if (codeA && codeB) {
+                return codeA.localeCompare(codeB, undefined, { numeric: true, sensitivity: 'base' });
+            }
+            if (codeA) return -1;
+            if (codeB) return 1;
+            const nameA = a.nama_risiko || a.identifikasi_deskripsi || '';
+            const nameB = b.nama_risiko || b.identifikasi_deskripsi || '';
+            return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
         });
-        return !isAlreadySaved;
-    });
 
     const handleRiskSelect = (riskId: string) => {
         f('risk_input_id', riskId);

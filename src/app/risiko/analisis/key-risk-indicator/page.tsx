@@ -39,6 +39,8 @@ interface RiskInputOption {
     id: string;
     kode_risiko?: string;
     nama_risiko?: string;
+    identifikasi_deskripsi?: string;
+    identifikasi_indikator?: string;
     nama_unit_kerja_id?: string;
     master_work_units?: { name: string };
 }
@@ -94,10 +96,15 @@ function KRIModal({ row, onClose, onSave, units, riskInputs, saving }: {
     const handleRiskSelect = (id: string) => {
         f('risk_input_id', id);
         const risk = riskInputs.find(r => r.id === id);
-        if (risk) { f('kode_risiko', risk.kode_risiko || ''); f('nama_kri', risk.nama_risiko || ''); }
+        if (risk) {
+            f('kode_risiko', risk.kode_risiko || '');
+            f('nama_kri', risk.nama_risiko || risk.identifikasi_deskripsi || '');
+            const descIndikator = risk.identifikasi_indikator || risk.identifikasi_deskripsi || risk.nama_risiko || '';
+            f('indikator', descIndikator);
+        }
     };
 
-    const filteredRiskInputs = form.unit_kerja_id
+    const filteredRiskInputs = (form.unit_kerja_id
         ? riskInputs.filter(r => {
             if (!r.nama_unit_kerja_id) return true;
             if (r.nama_unit_kerja_id === form.unit_kerja_id) return true;
@@ -109,7 +116,19 @@ function KRIModal({ row, onClose, onSave, units, riskInputs, saving }: {
             }
             return false;
         })
-        : riskInputs;
+        : riskInputs
+    ).sort((a, b) => {
+        const codeA = a.kode_risiko || '';
+        const codeB = b.kode_risiko || '';
+        if (codeA && codeB) {
+            return codeA.localeCompare(codeB, undefined, { numeric: true, sensitivity: 'base' });
+        }
+        if (codeA) return -1;
+        if (codeB) return 1;
+        const nameA = a.nama_risiko || a.identifikasi_deskripsi || '';
+        const nameB = b.nama_risiko || b.identifikasi_deskripsi || '';
+        return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+    });
 
     const aktual = Number(form.nilai_aktual);
     const atas = Number(form.batas_atas);
@@ -381,7 +400,7 @@ export default function KeyRiskIndicatorPage() {
     useEffect(() => {
         supabase.from('unit_kerja').select('id, nama_unit').then(({ data }: { data: any }) =>
             setUnits((data ?? []).map((u: any) => ({ id: u.id, name: u.nama_unit }))));
-        supabase.from('risk_inputs').select('id, kode_risiko, nama_risiko, nama_unit_kerja_id, master_work_units(name)').then(({ data }: { data: any }) =>
+        supabase.from('risk_inputs').select('id, kode_risiko, nama_risiko, identifikasi_deskripsi, identifikasi_indikator, nama_unit_kerja_id, master_work_units(name)').then(({ data }: { data: any }) =>
             setRiskInputs((data ?? []) as RiskInputOption[]));
     }, []);
 
