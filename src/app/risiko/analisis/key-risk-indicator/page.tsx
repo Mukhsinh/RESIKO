@@ -82,12 +82,13 @@ const EMPTY_FORM = {
 };
 
 /* ─── KRI Modal ─────────────────────────────────────────────────── */
-function KRIModal({ row, onClose, onSave, units, riskInputs, saving }: {
+function KRIModal({ row, onClose, onSave, units, riskInputs, existingRows, saving }: {
     row: Partial<typeof EMPTY_FORM> & { _id?: string } | null;
     onClose: () => void;
     onSave: (data: typeof EMPTY_FORM) => void;
     units: WorkUnit[];
     riskInputs: RiskInputOption[];
+    existingRows: KRIRow[];
     saving: boolean;
 }) {
     const [form, setForm] = useState({ ...EMPTY_FORM, ...(row ?? {}) });
@@ -96,12 +97,24 @@ function KRIModal({ row, onClose, onSave, units, riskInputs, saving }: {
     const handleRiskSelect = (id: string) => {
         f('risk_input_id', id);
         const risk = riskInputs.find(r => r.id === id);
-        if (risk) {
-            f('kode_risiko', risk.kode_risiko || '');
-            f('nama_kri', risk.nama_risiko || risk.identifikasi_deskripsi || '');
-            const descIndikator = risk.identifikasi_indikator || risk.identifikasi_deskripsi || risk.nama_risiko || '';
-            f('indikator', descIndikator);
+        if (risk && risk.kode_risiko) {
+            const prefix = `${risk.kode_risiko}/`;
+            let maxSeq = 0;
+            (existingRows || []).forEach(r => {
+                if (r.kode_risiko && r.kode_risiko.startsWith(prefix)) {
+                    const seqStr = r.kode_risiko.substring(prefix.length);
+                    const seqNum = parseInt(seqStr, 10);
+                    if (!isNaN(seqNum) && seqNum > maxSeq) {
+                        maxSeq = seqNum;
+                    }
+                }
+            });
+            const nextSeq = String(maxSeq + 1).padStart(3, '0');
+            f('kode_risiko', `${risk.kode_risiko}/${nextSeq}`);
+        } else if (!id) {
+            f('kode_risiko', '');
         }
+        // User rule: Nama KRI and Deskripsi Indikator are entered manually, not auto-populated from risk identification
     };
 
     const filteredRiskInputs = (form.unit_kerja_id
@@ -188,11 +201,11 @@ function KRIModal({ row, onClose, onSave, units, riskInputs, saving }: {
                         </select>
                     </div>
 
-                    {/* Kode & Nama KRI */}
+                    {/* Kode KRI & Nama KRI */}
                     <div className="grid grid-cols-3 gap-4">
                         <div>
-                            <label className="form-label">Kode Risiko</label>
-                            <input type="text" className="form-input w-full bg-slate-50" value={form.kode_risiko} readOnly placeholder="Auto" />
+                            <label className="form-label">Kode KRI</label>
+                            <input type="text" className="form-input w-full" value={form.kode_risiko} onChange={e => f('kode_risiko', e.target.value)} placeholder="e.g. Keu-Risk-001/001" />
                         </div>
                         <div className="col-span-2">
                             <label className="form-label">Nama KRI *</label>
@@ -288,7 +301,7 @@ function ViewModal({ row, onClose }: { row: KRIRow; onClose: () => void }) {
                     <div className="grid grid-cols-2 gap-4">
                         <div><span className="text-xs text-slate-400">Unit Kerja</span><p className="font-semibold mt-0.5">{row.unit_kerja?.nama_unit ?? '-'}</p></div>
                         <div><span className="text-xs text-slate-400">Tahun</span><p className="font-semibold mt-0.5">{row.tahun}</p></div>
-                        {row.kode_risiko && <div><span className="text-xs text-slate-400">Kode Risiko</span><p className="font-semibold mt-0.5">{row.kode_risiko}</p></div>}
+                        {row.kode_risiko && <div><span className="text-xs text-slate-400">Kode KRI</span><p className="font-semibold mt-0.5">{row.kode_risiko}</p></div>}
                         <div className="col-span-2"><span className="text-xs text-slate-400">Nama KRI</span><p className="font-semibold mt-0.5 text-base">{row.nama_kri}</p></div>
                         {row.indikator && <div className="col-span-2"><span className="text-xs text-slate-400">Deskripsi Indikator</span><p className="mt-0.5 text-slate-600">{row.indikator}</p></div>}
                     </div>
@@ -580,6 +593,7 @@ export default function KeyRiskIndicatorPage() {
                     onSave={handleSave}
                     units={units}
                     riskInputs={riskInputs}
+                    existingRows={rows}
                     saving={saving}
                 />
             )}

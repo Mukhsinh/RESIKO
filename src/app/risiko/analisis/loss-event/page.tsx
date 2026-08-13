@@ -35,12 +35,25 @@ interface LossEvent {
     created_at: string;
     unit_kerja?: { id: string; nama_unit: string };
     risk_inputs?: { id: string; nama_risiko?: string; kode_risiko?: string };
-    key_risk_indicators?: { id: string; nama_kri: string };
+    key_risk_indicators?: { id: string; nama_kri: string; kode_risiko?: string };
 }
 
-interface WorkUnit { id: string; nama_unit: string; }
-interface RiskInput { id: string; nama_risiko?: string; kode_risiko?: string; }
-interface KRIItem { id: string; nama_kri: string; }
+interface WorkUnit { id: string; nama_unit: string; name?: string; }
+interface RiskInputOption {
+    id: string;
+    kode_risiko?: string;
+    nama_risiko?: string;
+    identifikasi_deskripsi?: string;
+    nama_unit_kerja_id?: string;
+    master_work_units?: { name: string };
+}
+interface KRIItem {
+    id: string;
+    nama_kri: string;
+    kode_risiko?: string;
+    unit_kerja_id?: string;
+    risk_input_id?: string;
+}
 
 /* ─── Empty Form ─── */
 const EMPTY_FORM = {
@@ -69,12 +82,56 @@ function LossEventModal({ row, onClose, onSave, units, riskInputs, kriList, savi
     onClose: () => void;
     onSave: (data: typeof EMPTY_FORM) => void;
     units: WorkUnit[];
-    riskInputs: RiskInput[];
+    riskInputs: RiskInputOption[];
     kriList: KRIItem[];
     saving: boolean;
 }) {
     const [form, setForm] = useState({ ...EMPTY_FORM, ...(row ?? {}) });
     const f = (k: keyof typeof form, v: string | number) => setForm(prev => ({ ...prev, [k]: v }));
+
+    const filteredRiskInputs = (form.unit_kerja_id
+        ? riskInputs.filter(r => {
+            if (!r.nama_unit_kerja_id) return true;
+            if (r.nama_unit_kerja_id === form.unit_kerja_id) return true;
+            const selectedUnit = units.find(u => u.id === form.unit_kerja_id);
+            const uNameRaw = selectedUnit?.nama_unit || selectedUnit?.name;
+            if (uNameRaw && r.master_work_units?.name) {
+                const uName = uNameRaw.toLowerCase().replace(/^(instalasi|unit|ruang|pelayanan)\s+/i, '').trim();
+                const rName = r.master_work_units.name.toLowerCase().replace(/^(instalasi|unit|ruang|pelayanan)\s+/i, '').trim();
+                if (uName && rName && (uName.includes(rName) || rName.includes(uName))) return true;
+            }
+            return false;
+        })
+        : riskInputs
+    ).sort((a, b) => {
+        const codeA = a.kode_risiko || '';
+        const codeB = b.kode_risiko || '';
+        if (codeA && codeB) {
+            return codeA.localeCompare(codeB, undefined, { numeric: true, sensitivity: 'base' });
+        }
+        if (codeA) return -1;
+        if (codeB) return 1;
+        const nameA = a.nama_risiko || a.identifikasi_deskripsi || '';
+        const nameB = b.nama_risiko || b.identifikasi_deskripsi || '';
+        return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+    });
+
+    const filteredKRIList = kriList.filter(k => {
+        if (form.risk_input_id && k.risk_input_id) {
+            if (k.risk_input_id !== form.risk_input_id) return false;
+        }
+        if (form.unit_kerja_id && k.unit_kerja_id) {
+            if (k.unit_kerja_id !== form.unit_kerja_id) return false;
+        }
+        return true;
+    }).sort((a, b) => {
+        const codeA = a.kode_risiko || '';
+        const codeB = b.kode_risiko || '';
+        if (codeA && codeB) {
+            return codeA.localeCompare(codeB, undefined, { numeric: true, sensitivity: 'base' });
+        }
+        return (a.nama_kri || '').localeCompare(b.nama_kri || '', undefined, { numeric: true, sensitivity: 'base' });
+    });
 
     return (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 backdrop-blur-sm overflow-y-auto p-4">
@@ -92,9 +149,22 @@ function LossEventModal({ row, onClose, onSave, units, riskInputs, kriList, savi
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="form-label">Unit Kerja *</label>
-                            <select className="form-input w-full" value={form.unit_kerja_id} onChange={e => f('unit_kerja_id', e.target.value)} required>
+                            <select
+                                className="form-input w-full"
+                                value={form.unit_kerja_id}
+                                onChange={e => {
+                                    const newUnit = e.target.value;
+                                    setForm(prev => ({
+                                        ...prev,
+                                        unit_kerja_id: newUnit,
+                                        risk_input_id: '',
+                                        kri_id: '',
+                                    }));
+                                }}
+                                required
+                            >
                                 <option value="">-- Pilih Unit --</option>
-                                {units.map(u => <option key={u.id} value={u.id}>{u.nama_unit}</option>)}
+                                {units.map(u => <option key={u.id} value={u.id}>{u.nama_unit || u.name}</option>)}
                             </select>
                         </div>
                         <div>
@@ -107,9 +177,20 @@ function LossEventModal({ row, onClose, onSave, units, riskInputs, kriList, savi
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="form-label">Risiko Terkait</label>
-                            <select className="form-input w-full" value={form.risk_input_id} onChange={e => f('risk_input_id', e.target.value)}>
+                            <select
+                                className="form-input w-full"
+                                value={form.risk_input_id}
+                                onChange={e => {
+                                    const newRisk = e.target.value;
+                                    setForm(prev => ({
+                                        ...prev,
+                                        risk_input_id: newRisk,
+                                        kri_id: '',
+                                    }));
+                                }}
+                            >
                                 <option value="">-- Pilih Risiko --</option>
-                                {riskInputs.map(r => (
+                                {filteredRiskInputs.map(r => (
                                     <option key={r.id} value={r.id}>
                                         {r.kode_risiko ? `[${r.kode_risiko}] ` : ''}{r.nama_risiko || 'Tanpa Nama'}
                                     </option>
@@ -120,7 +201,11 @@ function LossEventModal({ row, onClose, onSave, units, riskInputs, kriList, savi
                             <label className="form-label">KRI Terkait</label>
                             <select className="form-input w-full" value={form.kri_id} onChange={e => f('kri_id', e.target.value)}>
                                 <option value="">-- Pilih KRI --</option>
-                                {kriList.map(k => <option key={k.id} value={k.id}>{k.nama_kri}</option>)}
+                                {filteredKRIList.map(k => (
+                                    <option key={k.id} value={k.id}>
+                                        {k.kode_risiko ? `[${k.kode_risiko}] ` : ''}{k.nama_kri}
+                                    </option>
+                                ))}
                             </select>
                         </div>
                     </div>
@@ -222,6 +307,18 @@ function ViewModal({ row, onClose }: { row: LossEvent; onClose: () => void }) {
                         <div><span className="text-xs text-slate-400">Kategori</span><p className="font-semibold mt-0.5">{row.kategori ?? '-'}</p></div>
                         <div><span className="text-xs text-slate-400">Skala Dampak</span><p className="font-bold text-rose-600 mt-0.5 text-lg">{row.skala_dampak ?? '-'}/5</p></div>
                     </div>
+                    {row.risk_inputs && (
+                        <div>
+                            <span className="text-xs text-slate-400">Risiko Terkait</span>
+                            <p className="font-medium mt-0.5">{row.risk_inputs.kode_risiko ? `[${row.risk_inputs.kode_risiko}] ` : ''}{row.risk_inputs.nama_risiko}</p>
+                        </div>
+                    )}
+                    {row.key_risk_indicators && (
+                        <div>
+                            <span className="text-xs text-slate-400">KRI Terkait</span>
+                            <p className="font-medium mt-0.5">{(row.key_risk_indicators as any).kode_risiko ? `[${(row.key_risk_indicators as any).kode_risiko}] ` : ''}{row.key_risk_indicators.nama_kri}</p>
+                        </div>
+                    )}
                     <div><span className="text-xs text-slate-400">Judul Kejadian</span><p className="font-semibold mt-0.5 text-base leading-snug">{row.judul_kejadian}</p></div>
                     {row.deskripsi_kejadian && <div><span className="text-xs text-slate-400">Deskripsi</span><p className="mt-0.5 text-slate-600 leading-relaxed">{row.deskripsi_kejadian}</p></div>}
                     {row.penyebab && <div><span className="text-xs text-slate-400">Penyebab</span><p className="mt-0.5 text-slate-600 leading-relaxed">{row.penyebab}</p></div>}
@@ -259,7 +356,7 @@ export default function LossEventPage() {
     const [editRow, setEditRow] = useState<Partial<typeof EMPTY_FORM> & { _id?: string } | null>(null);
     const [viewRow, setViewRow] = useState<LossEvent | null>(null);
     const [units, setUnits] = useState<WorkUnit[]>([]);
-    const [riskInputs, setRiskInputs] = useState<RiskInput[]>([]);
+    const [riskInputs, setRiskInputs] = useState<RiskInputOption[]>([]);
     const [kriList, setKriList] = useState<KRIItem[]>([]);
 
     // Auto-lock unit filter for unit managers
@@ -274,7 +371,7 @@ export default function LossEventPage() {
         try {
             let q = supabase
                 .from('loss_events')
-                .select('*, unit_kerja(id, nama_unit), risk_inputs(id, nama_risiko, kode_risiko), key_risk_indicators(id, nama_kri)')
+                .select('*, unit_kerja(id, nama_unit), risk_inputs(id, nama_risiko, kode_risiko), key_risk_indicators(id, nama_kri, kode_risiko)')
                 .order('tanggal_kejadian', { ascending: false });
 
             if (year) q = q.eq('tahun', Number(year));
@@ -292,7 +389,7 @@ export default function LossEventPage() {
                 // Fallback attempt without year filter in case of severe errors
                 const { data: fallbackData } = await supabase
                     .from('loss_events')
-                    .select('*, unit_kerja(id, nama_unit), risk_inputs(id, nama_risiko, kode_risiko), key_risk_indicators(id, nama_kri)')
+                    .select('*, unit_kerja(id, nama_unit), risk_inputs(id, nama_risiko, kode_risiko), key_risk_indicators(id, nama_kri, kode_risiko)')
                     .order('tanggal_kejadian', { ascending: false });
 
                 setRows((fallbackData as LossEvent[]) ?? []);
@@ -311,8 +408,8 @@ export default function LossEventPage() {
 
     useEffect(() => {
         supabase.from('unit_kerja').select('id, nama_unit').then(({ data }: { data: any }) => setUnits((data ?? []) as WorkUnit[]));
-        supabase.from('risk_inputs').select('id, nama_risiko, kode_risiko').then(({ data }: { data: any }) => setRiskInputs((data ?? []) as RiskInput[]));
-        supabase.from('key_risk_indicators').select('id, nama_kri').then(({ data }: { data: any }) => setKriList((data ?? []) as KRIItem[]));
+        supabase.from('risk_inputs').select('id, kode_risiko, nama_risiko, identifikasi_deskripsi, nama_unit_kerja_id, master_work_units(name)').then(({ data }: { data: any }) => setRiskInputs((data ?? []) as RiskInputOption[]));
+        supabase.from('key_risk_indicators').select('id, nama_kri, kode_risiko, unit_kerja_id, risk_input_id').then(({ data }: { data: any }) => setKriList((data ?? []) as KRIItem[]));
     }, []);
 
     const filtered = rows.filter(d => {

@@ -26,9 +26,17 @@ interface Penanganan {
     status: string;
     progres: number;
     created_at: string;
-    risiko?: { identifikasi_risiko: string; skor_risiko: number };
-    manajemen_risiko?: { identifikasi_risiko: string; skor_risiko: number };
+    risiko?: { identifikasi_risiko: string; skor_risiko?: number; kode_risiko?: string };
+    manajemen_risiko?: { identifikasi_risiko: string; skor_risiko?: number; kode_risiko?: string };
     unit_kerja?: { nama_unit: string };
+}
+
+interface RisikoItem {
+    id: string;
+    kode_risiko: string;
+    identifikasi_risiko: string;
+    unit_kerja_id?: string;
+    unit_name?: string;
 }
 
 interface Form {
@@ -52,7 +60,7 @@ export default function PenangananRisikoPage() {
     const { settings } = useAppSettings();
     const { profile, isManager, isAuditor, validUnitIds, isMatchUnit } = useUserProfile();
     const [data, setData] = useState<Penanganan[]>([]);
-    const [risikoList, setRisikoList] = useState<ManajemenRisiko[]>([]);
+    const [risikoList, setRisikoList] = useState<RisikoItem[]>([]);
     const [units, setUnits] = useState<{ id: string; nama_unit: string }[]>([]);
     const [loading, setLoading] = useState(true);
     const [downloading, setDownloading] = useState(false);
@@ -271,9 +279,17 @@ export default function PenangananRisikoPage() {
         }
     };
 
+    const riskMap = React.useMemo(() => {
+        const map = new Map<string, { identifikasi_risiko: string; kode_risiko: string }>();
+        risikoList.forEach(r => {
+            map.set(r.id, { identifikasi_risiko: r.identifikasi_risiko, kode_risiko: r.kode_risiko });
+        });
+        return map;
+    }, [risikoList]);
+
     const fetchData = useCallback(async () => {
         setLoading(true);
-        let query = supabase.from('penanganan_risiko').select('*, unit_kerja(id, nama_unit), manajemen_risiko(identifikasi_risiko, skor_risiko)');
+        let query = supabase.from('penanganan_risiko').select('*, unit_kerja(id, nama_unit), manajemen_risiko(identifikasi_risiko, skor_risiko, kode_risiko)');
         if (year) query = query.eq('tahun', Number(year));
 
         const { data: res } = await query;
@@ -286,11 +302,23 @@ export default function PenangananRisikoPage() {
     useEffect(() => {
         fetchData();
         supabase.from('unit_kerja').select('id, nama_unit').then(({ data }: { data: any }) => setUnits(data || []));
-        let mrQuery = supabase.from('manajemen_risiko').select('*');
-        // No manual RLS replication for managers on client to avoid UI uuid parsing errors.
-        // Let Supabase RLS handle manager unit isolation securely.
-        mrQuery.then(({ data }: { data: any }) => setRisikoList(data || []));
-    }, [fetchData, isManager, validUnitIds]);
+
+        // Fetch ALL identified risks from risk_inputs (the main table for /risiko/identifikasi)
+        supabase
+            .from('risk_inputs')
+            .select('id, kode_risiko, nama_risiko, identifikasi_deskripsi, nama_unit_kerja_id, master_work_units(id, name)')
+            .range(0, 4999)
+            .then(({ data: riData }: { data: any }) => {
+                const formatted = (riData || []).map((r: any) => ({
+                    id: r.id,
+                    kode_risiko: r.kode_risiko,
+                    identifikasi_risiko: r.nama_risiko || r.identifikasi_deskripsi || '',
+                    unit_kerja_id: r.nama_unit_kerja_id,
+                    unit_name: r.master_work_units?.name || '',
+                }));
+                setRisikoList(formatted);
+            });
+    }, [fetchData]);
 
     const filtered = data.filter(d =>
         d.rencana_aksi.toLowerCase().includes(search.toLowerCase()) ||
@@ -300,6 +328,39 @@ export default function PenangananRisikoPage() {
     const selesai = data.filter(d => d.status === 'Selesai').length;
     const berjalan = data.filter(d => d.status === 'Berjalan').length;
     const terlambat = data.filter(d => d.status === 'Terlambat').length;
+
+    const selectedUnitObj = units.find(u => u.id === form.unit_kerja_id);
+    const selectedUnitName = selectedUnitObj?.nama_unit || '';
+
+    const cleanUnitName = (str: string) =>
+        (str || '').toLowerCase().replace(/^(unit|instalasi|ruang|pelayanan|bagian|sub\s+bagian)\s+/i, '').trim();
+
+    const filteredRisiko = (form.unit_kerja_id
+        ? risikoList.filter(r => {
+            if (!r.unit_kerja_id && !r.unit_name) return true;
+            if (r.unit_kerja_id === form.unit_kerja_id) return true;
+            if (selectedUnitName && r.unit_name) {
+                const cleanSelected = cleanUnitName(selectedUnitName);
+                const cleanRiskUnit = cleanUnitName(r.unit_name);
+                if (cleanSelected && cleanRiskUnit && (cleanSelected.includes(cleanRiskUnit) || cleanRiskUnit.includes(cleanSelected))) {
+                    return true;
+                }
+            }
+            return false;
+        })
+        : risikoList
+    ).sort((a, b) => {
+        const codeA = a.kode_risiko || '';
+        const codeB = b.kode_risiko || '';
+        if (codeA && codeB) {
+            return codeA.localeCompare(codeB, undefined, { numeric: true, sensitivity: 'base' });
+        }
+        if (codeA) return -1;
+        if (codeB) return 1;
+        const nameA = a.identifikasi_risiko || '';
+        const nameB = b.identifikasi_risiko || '';
+        return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+    });
 
     const openAdd = () => {
         setEditId(null);
@@ -328,7 +389,16 @@ export default function PenangananRisikoPage() {
     };
 
     const columns: Column<Penanganan>[] = [
-        { key: 'risiko', label: 'Risiko', render: r => <span className="line-clamp-2 text-xs">{r.risiko?.identifikasi_risiko ?? '-'}</span> },
+        {
+            key: 'risiko',
+            label: 'Risiko',
+            render: r => {
+                const riskObj = r.risiko?.identifikasi_risiko ? r.risiko : riskMap.get(r.manajemen_risiko_id);
+                const code = riskObj?.kode_risiko;
+                const text = riskObj?.identifikasi_risiko ?? '-';
+                return <span className="line-clamp-2 text-xs">{code ? `[${code}] ` : ''}{text}</span>;
+            }
+        },
         { key: 'unit_kerja_id', label: 'Unit', render: r => r.unit_kerja?.nama_unit ?? '-' },
         { key: 'jenis_penanganan', label: 'Jenis', className: 'text-center' },
         { key: 'rencana_aksi', label: 'Rencana Aksi', render: r => <span className="line-clamp-2">{r.rencana_aksi}</span> },
@@ -384,17 +454,43 @@ export default function PenangananRisikoPage() {
                         <form onSubmit={handleSave} className="p-6 space-y-4">
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="form-label">Risiko Terkait</label>
-                                    <select className="form-input" value={form.manajemen_risiko_id} onChange={e => setForm(f => ({ ...f, manajemen_risiko_id: e.target.value }))} required>
-                                        <option value="">-- Pilih Risiko --</option>
-                                        {risikoList.map(r => <option key={r.id} value={r.id}>{r.identifikasi_risiko.slice(0, 60)}</option>)}
+                                    <label className="form-label">Unit Kerja *</label>
+                                    <select
+                                        className="form-input"
+                                        value={form.unit_kerja_id}
+                                        onChange={e => {
+                                            const newUnit = e.target.value;
+                                            setForm(f => ({ ...f, unit_kerja_id: newUnit, manajemen_risiko_id: '' }));
+                                        }}
+                                        required
+                                    >
+                                        <option value="">-- Pilih Unit --</option>
+                                        {units.map(u => <option key={u.id} value={u.id}>{u.nama_unit}</option>)}
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="form-label">Unit Kerja</label>
-                                    <select className="form-input" value={form.unit_kerja_id} onChange={e => setForm(f => ({ ...f, unit_kerja_id: e.target.value }))} required>
-                                        <option value="">-- Pilih Unit --</option>
-                                        {units.map(u => <option key={u.id} value={u.id}>{u.nama_unit}</option>)}
+                                    <label className="form-label">Risiko Terkait *</label>
+                                    <select
+                                        className="form-input"
+                                        value={form.manajemen_risiko_id}
+                                        onChange={e => {
+                                            const newMR = e.target.value;
+                                            const selectedRisk = risikoList.find(r => r.id === newMR);
+                                            setForm(f => ({
+                                                ...f,
+                                                manajemen_risiko_id: newMR,
+                                                ...(selectedRisk?.unit_kerja_id ? { unit_kerja_id: selectedRisk.unit_kerja_id } : {})
+                                            }));
+                                        }}
+                                        required
+                                        disabled={!form.unit_kerja_id}
+                                    >
+                                        <option value="">{form.unit_kerja_id ? '-- Pilih Risiko --' : '-- Pilih Unit Dahulu --'}</option>
+                                        {filteredRisiko.map(r => (
+                                            <option key={r.id} value={r.id}>
+                                                {r.kode_risiko ? `[${r.kode_risiko}] ` : ''}{r.identifikasi_risiko}
+                                            </option>
+                                        ))}
                                     </select>
                                 </div>
                             </div>

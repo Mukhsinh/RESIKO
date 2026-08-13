@@ -41,6 +41,7 @@ interface RisikoItem {
     identifikasi_deskripsi?: string;
     nama_risiko?: string;
     nama_unit_kerja_id?: string;
+    master_work_units?: { name: string };
 }
 
 const EMPTY_FORM = {
@@ -112,16 +113,8 @@ export default function MonitoringRisikoPage() {
     useEffect(() => {
         fetchData();
         supabase.from('unit_kerja').select('id, nama_unit').then(({ data }: { data: any }) => setUnits((data ?? []) as WorkUnit[]));
-        let rQuery = supabase.from('risk_inputs').select('id, nama_risiko, identifikasi_deskripsi, kode_risiko, nama_unit_kerja_id');
-        if (isManager && validUnitIds.length > 0) {
-            if (validUnitIds.length === 1) {
-                rQuery = rQuery.eq('nama_unit_kerja_id', validUnitIds[0]);
-            } else {
-                rQuery = rQuery.in('nama_unit_kerja_id', validUnitIds);
-            }
-        }
-        rQuery.then(({ data }: { data: any }) => setRisikoList((data ?? []) as RisikoItem[]));
-    }, [fetchData, isManager, validUnitIds]);
+        supabase.from('risk_inputs').select('id, kode_risiko, nama_risiko, identifikasi_deskripsi, nama_unit_kerja_id, master_work_units(name)').then(({ data }: { data: any }) => setRisikoList((data ?? []) as RisikoItem[]));
+    }, [fetchData]);
 
     const statuses = ['Aktif', 'Monitoring', 'Mitigasi', 'Selesai'];
     const statusColors: Record<string, string> = {
@@ -136,7 +129,31 @@ export default function MonitoringRisikoPage() {
     const mitigasi = data.filter(d => d.status === 'Mitigasi').length;
     const selesai = data.filter(d => d.status === 'Selesai').length;
 
-    const filteredRisiko = risikoList.filter(r => !form.unit_kerja_id || r.nama_unit_kerja_id === form.unit_kerja_id);
+    const filteredRisiko = (form.unit_kerja_id
+        ? risikoList.filter(r => {
+            if (!r.nama_unit_kerja_id) return true;
+            if (r.nama_unit_kerja_id === form.unit_kerja_id) return true;
+            const selectedUnit = units.find(u => u.id === form.unit_kerja_id);
+            if (selectedUnit?.nama_unit && r.master_work_units?.name) {
+                const uName = selectedUnit.nama_unit.toLowerCase().replace(/^(instalasi|unit|ruang|pelayanan)\s+/i, '').trim();
+                const rName = r.master_work_units.name.toLowerCase().replace(/^(instalasi|unit|ruang|pelayanan)\s+/i, '').trim();
+                if (uName && rName && (uName.includes(rName) || rName.includes(uName))) return true;
+            }
+            return false;
+        })
+        : risikoList
+    ).sort((a, b) => {
+        const codeA = a.kode_risiko || '';
+        const codeB = b.kode_risiko || '';
+        if (codeA && codeB) {
+            return codeA.localeCompare(codeB, undefined, { numeric: true, sensitivity: 'base' });
+        }
+        if (codeA) return -1;
+        if (codeB) return 1;
+        const nameA = a.nama_risiko || a.identifikasi_deskripsi || '';
+        const nameB = b.nama_risiko || b.identifikasi_deskripsi || '';
+        return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+    });
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
