@@ -8,18 +8,22 @@ interface ScoreCardProps {
     value: string | number;
     subtitle?: string;
     colorClass: string;
+    action?: React.ReactNode;
 }
 
-export function ScoreCard({ icon, title, value, subtitle, colorClass }: ScoreCardProps) {
+export function ScoreCard({ icon, title, value, subtitle, colorClass, action }: ScoreCardProps) {
     return (
-        <div className="score-card">
-            <div className={`w-14 h-14 rounded-xl flex items-center justify-center border shrink-0 ${colorClass}`}>
+        <div className="score-card relative p-3.5 sm:p-4">
+            <div className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center border shrink-0 ${colorClass}`}>
                 {icon}
             </div>
-            <div>
-                <p className="text-xs font-semibold text-slate-500">{title}</p>
-                <h3 className="text-2xl font-bold text-slate-800 my-0.5">{value}</h3>
-                {subtitle && <p className="text-xs text-slate-400 font-medium">{subtitle}</p>}
+            <div className="flex-1 min-w-0">
+                <div className="flex items-start justify-between gap-1">
+                    <p className="text-xs font-semibold text-slate-600 leading-snug break-words">{title}</p>
+                    {action && <div className="shrink-0 -mr-1 -mt-0.5">{action}</div>}
+                </div>
+                <h3 className="text-xl sm:text-2xl font-bold text-slate-800 my-0.5 leading-tight">{value}</h3>
+                {subtitle && <p className="text-[11px] text-slate-400 font-medium leading-tight break-words">{subtitle}</p>}
             </div>
         </div>
     );

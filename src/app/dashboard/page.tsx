@@ -5,19 +5,47 @@ import { supabase } from '@/lib/supabase';
 import { ScoreCard } from '@/components/SharedUI';
 import {
     ShieldAlert, Target, TrendingUp, AlertTriangle,
-    CheckCircle2, Clock, BarChart2, Activity, ShieldCheck, ArrowRight
+    CheckCircle2, Clock, BarChart2, Activity, ShieldCheck, ArrowRight, Eye, X
 } from 'lucide-react';
 import { useAppSettings } from '@/hooks/useAppSettings';
 import { useUserProfile } from '@/hooks/useUserProfile';
-import RiskHeatmap from '@/components/RiskHeatmap';
+import RiskHeatmap, { getAppetiteCoords, type HeatmapPoint } from '@/components/RiskHeatmap';
 import {
     PieChart, Pie, Cell, ResponsiveContainer,
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend
 } from 'recharts';
 
+const CustomDonutTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+        const data = payload[0].payload;
+        return (
+            <div className="bg-slate-900/90 text-white p-3.5 rounded-2xl shadow-xl border border-slate-700/50 backdrop-blur-md max-w-xs text-xs space-y-1.5 animate-in fade-in duration-150">
+                <div className="flex items-center gap-2 font-bold text-sm">
+                    <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: data.color }} />
+                    <span>Tingkat {data.name}</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-200 border-t border-slate-700/60 pt-1.5">
+                    <span className="text-slate-400 font-medium">Jumlah Risiko:</span>
+                    <span className="font-bold text-white text-sm">{data.value} Risiko</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-200">
+                    <span className="text-slate-400 font-medium">Proporsi / Porsi:</span>
+                    <span className="font-bold text-emerald-400">{data.pct}% dari Total</span>
+                </div>
+                <div className="text-[11px] text-slate-300 font-normal leading-relaxed pt-1 bg-slate-800/80 px-2.5 py-1.5 rounded-xl border border-slate-700/40">
+                    💡 <span className="font-semibold">{data.desc}</span>
+                </div>
+            </div>
+        );
+    }
+    return null;
+};
+
 export default function DashboardPage() {
     const { settings } = useAppSettings();
     const { profile } = useUserProfile();
+
+    const [cardModalType, setCardModalType] = useState<'targetKpi' | 'totalRisiko' | 'risikoTinggi' | 'risikoBerjalan' | null>(null);
 
     const [stats, setStats] = useState({
         totalRisiko: 0,
@@ -153,12 +181,44 @@ export default function DashboardPage() {
     }, [selectedUnit, selectedYear, profile]);
 
     // Data for Risk Donut Chart
-    const riskDonutData = [
-        { name: 'Sangat Tinggi', value: stats.risikoTinggi, color: '#ef4444' },
-        { name: 'Tinggi', value: rawRisiko.filter(r => r.skor_risiko >= 10 && r.skor_risiko < 15).length, color: '#f97316' },
-        { name: 'Sedang', value: stats.risikoSedang, color: '#eab308' },
-        { name: 'Rendah', value: stats.risikoRendah, color: '#10b981' },
-    ].filter(item => item.value > 0);
+    const riskDonutData = React.useMemo(() => {
+        const tinggi = stats.risikoTinggi;
+        const sedangTinggi = rawRisiko.filter(r => r.skor_risiko >= 10 && r.skor_risiko < 15).length;
+        const sedang = stats.risikoSedang;
+        const rendah = stats.risikoRendah;
+        const total = stats.totalRisiko || 1;
+
+        return [
+            {
+                name: 'Sangat Tinggi',
+                value: tinggi,
+                color: '#ef4444',
+                desc: 'Skor Inherent ≥ 15 (Eskalasi & Respon Segera Manajemen)',
+                pct: Math.round((tinggi / total) * 100)
+            },
+            {
+                name: 'Tinggi',
+                value: sedangTinggi,
+                color: '#f97316',
+                desc: 'Skor Inherent 10 - 14 (Mitigasi Prioritas & Pemantauan Ketat)',
+                pct: Math.round((sedangTinggi / total) * 100)
+            },
+            {
+                name: 'Sedang',
+                value: sedang,
+                color: '#eab308',
+                desc: 'Skor Inherent 5 - 9 (Tindakan Penanganan Penyesuaian Rutin)',
+                pct: Math.round((sedang / total) * 100)
+            },
+            {
+                name: 'Rendah',
+                value: rendah,
+                color: '#10b981',
+                desc: 'Skor Inherent < 5 (Dapat Diterima & Pengawasan Standar)',
+                pct: Math.round((rendah / total) * 100)
+            },
+        ].filter(item => item.value > 0);
+    }, [stats, rawRisiko]);
 
     // Grouping KPI Achievement by Unit Kerja
     const getKpiPerUnitData = () => {
@@ -183,14 +243,19 @@ export default function DashboardPage() {
 
     const kpiPerUnitData = getKpiPerUnitData();
 
-    // Map raw risks to Heatmap points
-    const heatmapPoints = rawRisiko.map(r => ({
-        id: r.id,
-        x: r.dampak || 1,
-        y: r.probabilitas || 1,
-        label: r.identifikasi_risiko,
-        type: r.skor_risiko >= 15 ? 'inherent' as const : r.status === 'Closed' ? 'residual' as const : 'appetite' as const
-    }));
+    // Map raw risks to Heatmap points (Inherent, Residual, and Appetite)
+    const heatmapPoints: HeatmapPoint[] = rawRisiko.flatMap(r => {
+        const p_res = (r.p_residual != null ? r.p_residual : Math.ceil((r.probabilitas || 1) * 0.5)) || 1;
+        const d_res = (r.d_residual != null ? r.d_residual : Math.ceil((r.dampak || 1) * 0.8)) || 1;
+        const appScore = r.selera_risiko ?? 6;
+        const appCoord = getAppetiteCoords(appScore);
+
+        return [
+            { id: `${r.id}_inh`, x: r.dampak || 1, y: r.probabilitas || 1, label: `Inherent: ${r.identifikasi_risiko}`, type: 'inherent' as const },
+            { id: `${r.id}_res`, x: d_res, y: p_res, label: `Residual: ${r.identifikasi_risiko}`, type: 'residual' as const },
+            { id: `${r.id}_app`, x: appCoord.d, y: appCoord.p, label: `Target Appetite (${appScore}): ${r.identifikasi_risiko}`, type: 'appetite' as const },
+        ];
+    });
 
     // Top 5 risks
     const topRisks = [...rawRisiko].sort((a, b) => b.skor_risiko - a.skor_risiko).slice(0, 5);
@@ -284,6 +349,16 @@ export default function DashboardPage() {
                 </div>
             </div>
 
+            {/* Modal Detail for ScoreCards */}
+            {cardModalType && (
+                <DashboardCardDetailModal
+                    type={cardModalType}
+                    rawRisiko={rawRisiko}
+                    rawStrategi={rawStrategi}
+                    onClose={() => setCardModalType(null)}
+                />
+            )}
+
             {/* Modern Score Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
                 <ScoreCard
@@ -292,6 +367,15 @@ export default function DashboardPage() {
                     value={stats.totalStrategi}
                     subtitle={`Tercapai: ${stats.strategiTercapai} KPI (${kpiPct}%)`}
                     colorClass="bg-white border-slate-200/80 shadow-xs hover:border-blue-300"
+                    action={
+                        <button
+                            onClick={() => setCardModalType('targetKpi')}
+                            className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                            title="Lihat Detail Target KPI Utama"
+                        >
+                            <Eye size={15} />
+                        </button>
+                    }
                 />
                 <ScoreCard
                     icon={<ShieldAlert size={22} className="text-rose-500" />}
@@ -299,6 +383,15 @@ export default function DashboardPage() {
                     value={stats.totalRisiko}
                     subtitle={`Status Closed: ${stats.risikoClosed} (${closedPct}%)`}
                     colorClass="bg-white border-slate-200/80 shadow-xs hover:border-rose-300"
+                    action={
+                        <button
+                            onClick={() => setCardModalType('totalRisiko')}
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title="Lihat Detail Total Daftar Risiko"
+                        >
+                            <Eye size={15} />
+                        </button>
+                    }
                 />
                 <ScoreCard
                     icon={<AlertTriangle size={22} className="text-amber-500" />}
@@ -306,6 +399,15 @@ export default function DashboardPage() {
                     value={stats.risikoTinggi}
                     subtitle="Memerlukan respon eskalasi segera"
                     colorClass="bg-white border-slate-200/80 shadow-xs hover:border-amber-300"
+                    action={
+                        <button
+                            onClick={() => setCardModalType('risikoTinggi')}
+                            className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                            title="Lihat Detail Risiko Sangat Tinggi"
+                        >
+                            <Eye size={15} />
+                        </button>
+                    }
                 />
                 <ScoreCard
                     icon={<Activity size={22} className="text-emerald-500" />}
@@ -313,80 +415,126 @@ export default function DashboardPage() {
                     value={stats.risikoBerjalan}
                     subtitle="Menjalani proses pemantauan mitigasi"
                     colorClass="bg-white border-slate-200/80 shadow-xs hover:border-emerald-300"
+                    action={
+                        <button
+                            onClick={() => setCardModalType('risikoBerjalan')}
+                            className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                            title="Lihat Detail Risiko Aktif Berjalan"
+                        >
+                            <Eye size={15} />
+                        </button>
+                    }
                 />
             </div>
 
             {/* Charts Visual section */}
             {isMounted && (
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                    {/* Donut Chart Sebaran Tingkat Risiko */}
-                    <div className="lg:col-span-4 card bg-white border border-slate-200/60 shadow-xs p-6 rounded-3xl flex flex-col justify-between">
-                        <div>
-                            <h3 className="font-bold text-slate-800 text-sm mb-1 flex items-center gap-2">
-                                <Activity size={16} className="text-[#137fec]" /> Sebaran Tingkat Risiko
-                            </h3>
-                            <p className="text-xs text-slate-400 font-medium">Berdasarkan proporsi kuantitas risiko aktif</p>
-                        </div>
-                        <div className="h-64 w-full my-4 relative block">
-                            {riskDonutData.length === 0 ? (
-                                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                                    <span className="text-xs text-slate-400 font-medium">Tidak ada data risiko untuk ditampilkan</span>
-                                </div>
-                            ) : (
-                                <ResponsiveContainer width="99%" height="100%">
-                                    <PieChart>
-                                        <Pie
-                                            data={riskDonutData}
-                                            innerRadius={60}
-                                            outerRadius={85}
-                                            paddingAngle={3}
-                                            dataKey="value"
-                                        >
-                                            {riskDonutData.map((entry, index) => (
-                                                <Cell key={`cell-${index}`} fill={entry.color} />
-                                            ))}
-                                        </Pie>
-                                        <Tooltip formatter={(value) => [`${value} Risiko`, 'Jumlah']} />
-                                    </PieChart>
-                                </ResponsiveContainer>
-                            )}
-                            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                <span className="text-3xl font-black text-slate-800">{stats.totalRisiko}</span>
-                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Total Risiko</span>
+                <div className="space-y-8">
+                    {/* 1. Peta Sebaran Risiko (Heatmap) - POSISI ATAS & FULL WIDTH */}
+                    <div className="card bg-white border border-slate-200/60 shadow-xs p-6 sm:p-8 rounded-3xl">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-6">
+                            <div>
+                                <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
+                                    <ShieldCheck size={20} className="text-rose-500" /> Peta Sebaran Risiko (Heatmap)
+                                </h3>
+                                <p className="text-xs text-slate-400 font-medium mt-0.5">
+                                    Penempatan titik matriks 5x5 risiko Inherent (I), Residual (R), dan Risk Appetite (A) seluruh unit kerja
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 self-start sm:self-auto">
+                                <span>Total Titik Terdaftar:</span>
+                                <span className="font-bold text-slate-900">{rawRisiko.length} Risiko</span>
                             </div>
                         </div>
-                        <div className="flex border-t border-slate-100 pt-4 flex-wrap justify-between gap-y-2">
-                            {riskDonutData.map(item => (
-                                <div key={item.name} className="flex items-center gap-1.5 text-xs font-semibold text-slate-650">
-                                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }}></span>
-                                    <span>{item.name} ({item.value})</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Risk Heatmap Real-data Visual */}
-                    <div className="lg:col-span-8 card bg-white border border-slate-200/60 shadow-xs p-6 rounded-3xl">
-                        <h3 className="font-bold text-slate-800 text-sm mb-1 flex items-center gap-2">
-                            <ShieldCheck size={16} className="text-rose-500" /> Peta Sebaran Risiko (Heatmap)
-                        </h3>
-                        <p className="text-xs text-slate-400 font-medium mb-6">Penempatan titik risiko inheren (I) dan sisa residual (R) pada matriks 5x5</p>
                         <div className="flex justify-center">
-                            <div className="w-full max-w-2xl">
+                            <div className="w-full max-w-4xl">
                                 <RiskHeatmap data={heatmapPoints} />
                             </div>
                         </div>
                     </div>
 
-                    {/* KPI Achievement Bar Chart per Unit */}
+                    {/* 2. Donut Chart Sebaran Tingkat Risiko - POSISI DI BAWAH HEATMAP & FULL WIDTH DIPERBESAR */}
+                    <div className="card bg-white border border-slate-200/60 shadow-xs p-6 sm:p-8 rounded-3xl">
+                        <div className="mb-6">
+                            <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
+                                <Activity size={20} className="text-[#137fec]" /> Sebaran & Analisis Tingkat Risiko
+                            </h3>
+                            <p className="text-xs text-slate-400 font-medium mt-0.5">
+                                Proporsi kuantitas risiko aktif berdasarkan kategori tingkat keparahan risiko (Sangat Tinggi, Tinggi, Sedang, Rendah)
+                            </p>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+                            {/* Visual Chart - Left Side (Enlarged) */}
+                            <div className="lg:col-span-5 flex justify-center items-center">
+                                <div className="h-80 sm:h-96 w-full max-w-md relative block">
+                                    {riskDonutData.length === 0 ? (
+                                        <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                            <span className="text-xs text-slate-400 font-medium">Tidak ada data risiko untuk ditampilkan</span>
+                                        </div>
+                                    ) : (
+                                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                                            <PieChart>
+                                                <Pie
+                                                    data={riskDonutData}
+                                                    innerRadius={80}
+                                                    outerRadius={125}
+                                                    paddingAngle={4}
+                                                    dataKey="value"
+                                                >
+                                                    {riskDonutData.map((entry, index) => (
+                                                        <Cell key={`cell-${index}`} fill={entry.color} stroke="#ffffff" strokeWidth={2} />
+                                                    ))}
+                                                </Pie>
+                                                <Tooltip content={<CustomDonutTooltip />} />
+                                            </PieChart>
+                                        </ResponsiveContainer>
+                                    )}
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                        <span className="text-4xl font-black text-slate-800 tracking-tight">{stats.totalRisiko}</span>
+                                        <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wider mt-1">Total Risiko</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Legend & Breakdown Cards - Right Side */}
+                            <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {riskDonutData.map(item => (
+                                    <div
+                                        key={item.name}
+                                        className="p-4 rounded-2xl border border-slate-100 bg-slate-50/70 hover:bg-white hover:border-slate-300 hover:shadow-sm transition-all duration-200 group"
+                                    >
+                                        <div className="flex items-center justify-between mb-2">
+                                            <div className="flex items-center gap-2">
+                                                <span className="w-3.5 h-3.5 rounded-full shrink-0 shadow-xs" style={{ backgroundColor: item.color }} />
+                                                <span className="font-bold text-sm text-slate-800">Tingkat {item.name}</span>
+                                            </div>
+                                            <span className="text-xs font-black px-2 py-0.5 rounded-lg bg-white border border-slate-200 text-slate-700">
+                                                {item.pct}%
+                                            </span>
+                                        </div>
+                                        <div className="flex items-baseline justify-between text-xs text-slate-500 mb-1.5">
+                                            <span>Jumlah Risiko:</span>
+                                            <span className="text-base font-black text-slate-800">{item.value} <span className="text-xs font-medium text-slate-400">Risiko</span></span>
+                                        </div>
+                                        <p className="text-[11px] text-slate-400 font-medium leading-relaxed border-t border-slate-200/60 pt-2 mt-2">
+                                            {item.desc}
+                                        </p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 3. KPI Achievement Bar Chart per Unit */}
                     {kpiPerUnitData.length > 0 && (
-                        <div className="lg:col-span-12 card bg-white border border-slate-200/60 shadow-xs p-6 rounded-3xl">
-                            <h3 className="font-bold text-slate-800 text-sm mb-1 flex items-center gap-2">
-                                <Target size={16} className="text-[#137fec]" /> Tren Pencapaian KPI per Unit Kerja
+                        <div className="card bg-white border border-slate-200/60 shadow-xs p-6 sm:p-8 rounded-3xl">
+                            <h3 className="font-bold text-slate-800 text-base mb-1 flex items-center gap-2">
+                                <Target size={20} className="text-[#137fec]" /> Tren Pencapaian KPI per Unit Kerja
                             </h3>
                             <p className="text-xs text-slate-400 font-medium mb-6">Membandingkan target sasaran strategis dengan capaian realisasi</p>
                             <div className="h-72 w-full block relative">
-                                <ResponsiveContainer width="99%" height="100%">
+                                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                                     <BarChart data={kpiPerUnitData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                                         <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} fontWeight="600" />
@@ -532,5 +680,263 @@ function QuickModule({ href, icon, title, desc, color }: {
                 <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-tight">{desc}</p>
             </div>
         </a>
+    );
+}
+
+function DashboardCardDetailModal({
+    type,
+    rawRisiko,
+    rawStrategi,
+    onClose
+}: {
+    type: 'targetKpi' | 'totalRisiko' | 'risikoTinggi' | 'risikoBerjalan';
+    rawRisiko: any[];
+    rawStrategi: any[];
+    onClose: () => void;
+}) {
+    const [search, setSearch] = useState('');
+
+    const config = React.useMemo(() => {
+        if (type === 'targetKpi') {
+            const list = rawStrategi;
+            const tercapai = list.filter(s => {
+                const t = parseFloat(s.target), r = parseFloat(s.realisasi);
+                return !isNaN(t) && !isNaN(r) && r >= t;
+            });
+            const pct = list.length > 0 ? Math.round((tercapai.length / list.length) * 100) : 0;
+            return {
+                title: 'Detail Target KPI Utama & Sasaran Strategis',
+                subtitle: 'Evaluasi pencapaian Indikator Kinerja Utama (IKT) per Sasaran Strategis',
+                headerGradient: 'from-blue-600 to-indigo-700',
+                icon: <Target size={24} className="text-white" />,
+                statCards: [
+                    { label: 'Total Indikator KPI', val: list.length, color: 'text-blue-600' },
+                    { label: 'Target Tercapai', val: `${tercapai.length} KPI (${pct}%)`, color: 'text-emerald-600' },
+                    { label: 'Belum Tercapai', val: list.length - tercapai.length, color: 'text-amber-600' },
+                ],
+                isKPI: true,
+                list
+            };
+        } else if (type === 'totalRisiko') {
+            const list = rawRisiko;
+            const closed = list.filter(r => r.status === 'Closed');
+            const pct = list.length > 0 ? Math.round((closed.length / list.length) * 100) : 0;
+            return {
+                title: 'Detail Seluruh Daftar Risiko Terdaftar',
+                subtitle: 'Inventarisasi lengkap seluruh data risiko teridentifikasi dalam sistem',
+                headerGradient: 'from-rose-600 to-pink-700',
+                icon: <ShieldAlert size={24} className="text-white" />,
+                statCards: [
+                    { label: 'Total Seluruh Risiko', val: list.length, color: 'text-rose-600' },
+                    { label: 'Status Closed / Selesai', val: `${closed.length} (${pct}%)`, color: 'text-emerald-600' },
+                    { label: 'Risiko Aktif', val: list.length - closed.length, color: 'text-indigo-600' },
+                ],
+                isKPI: false,
+                list
+            };
+        } else if (type === 'risikoTinggi') {
+            const list = rawRisiko.filter(r => r.skor_risiko >= 15);
+            return {
+                title: 'Detail Risiko Prioritas Sangat Tinggi (Ekstrem)',
+                subtitle: 'Risiko dengan Skor Inherent (P × D) ≥ 15 yang memerlukan respon eskalasi segera',
+                headerGradient: 'from-amber-500 to-orange-600',
+                icon: <AlertTriangle size={24} className="text-white" />,
+                statCards: [
+                    { label: 'Jumlah Risiko Sangat Tinggi', val: list.length, color: 'text-rose-600' },
+                    { label: 'Rasio Terhadap Total Risiko', val: `${rawRisiko.length > 0 ? Math.round((list.length / rawRisiko.length) * 100) : 0}%`, color: 'text-amber-600' },
+                ],
+                isKPI: false,
+                list
+            };
+        } else {
+            const list = rawRisiko.filter(r => r.status !== 'Closed');
+            return {
+                title: 'Detail Risiko Aktif Berjalan',
+                subtitle: 'Risiko yang sedang menjalani proses pemantauan & tindakan mitigasi rutin',
+                headerGradient: 'from-emerald-600 to-teal-700',
+                icon: <Activity size={24} className="text-white" />,
+                statCards: [
+                    { label: 'Total Risiko Aktif Berjalan', val: list.length, color: 'text-emerald-600' },
+                    { label: 'Risiko Butuh Mitigasi Tinggi', val: `${list.filter(r => r.skor_risiko >= 10).length} Risiko`, color: 'text-orange-600' },
+                ],
+                isKPI: false,
+                list
+            };
+        }
+    }, [type, rawRisiko, rawStrategi]);
+
+    const filteredList = config.list.filter(item => {
+        const q = search.toLowerCase();
+        if (config.isKPI) {
+            return (
+                (item.sasaran_strategis || '').toLowerCase().includes(q) ||
+                (item.indikator_kinerja || '').toLowerCase().includes(q) ||
+                (item.unit_kerja?.nama_unit || '').toLowerCase().includes(q) ||
+                (item.kode_ikt || '').toLowerCase().includes(q)
+            );
+        } else {
+            return (
+                (item.identifikasi_risiko || '').toLowerCase().includes(q) ||
+                (item.kode_risiko || '').toLowerCase().includes(q) ||
+                (item.unit_kerja?.nama_unit || '').toLowerCase().includes(q)
+            );
+        }
+    });
+
+    return (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden border border-slate-100">
+                {/* Modal Header */}
+                <div className={`p-6 text-white bg-gradient-to-r ${config.headerGradient} flex items-center justify-between`}>
+                    <div className="flex items-center gap-4">
+                        <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-md shrink-0">
+                            {config.icon}
+                        </div>
+                        <div>
+                            <h2 className="text-lg font-bold tracking-tight">{config.title}</h2>
+                            <p className="text-xs text-white/80 mt-0.5">{config.subtitle}</p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={onClose}
+                        className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors cursor-pointer"
+                        title="Tutup"
+                    >
+                        <X size={18} />
+                    </button>
+                </div>
+
+                {/* Modal Body */}
+                <div className="p-6 overflow-y-auto space-y-6 flex-1 custom-scrollbar">
+                    {/* Metric Cards Row */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                        {config.statCards.map((sc, i) => (
+                            <div key={i} className="bg-slate-50 border border-slate-200/80 p-3.5 rounded-2xl text-center shadow-xs">
+                                <p className="text-[11px] font-semibold text-slate-400 uppercase">{sc.label}</p>
+                                <p className={`text-xl font-black mt-1 ${sc.color}`}>{sc.val}</p>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Table Control */}
+                    <div className="space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                Rincian Data ({filteredList.length} dari {config.list.length} Records)
+                            </h3>
+                            <input
+                                type="text"
+                                value={search}
+                                onChange={e => setSearch(e.target.value)}
+                                placeholder="Cari data..."
+                                className="px-3.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs w-full sm:w-64 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                            />
+                        </div>
+
+                        {/* Table List */}
+                        <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xs">
+                            <div className="max-h-80 overflow-y-auto">
+                                <table className="w-full text-left text-xs text-slate-600 border-collapse">
+                                    <thead className="bg-slate-100 text-slate-700 font-bold sticky top-0 border-b border-slate-200 z-10">
+                                        {config.isKPI ? (
+                                            <tr>
+                                                <th className="px-4 py-3 text-center w-12">No</th>
+                                                <th className="px-4 py-3">Unit Kerja</th>
+                                                <th className="px-4 py-3">Sasaran Strategis & Indikator</th>
+                                                <th className="px-4 py-3 text-center">Target</th>
+                                                <th className="px-4 py-3 text-center">Realisasi</th>
+                                                <th className="px-4 py-3 text-center">Status</th>
+                                            </tr>
+                                        ) : (
+                                            <tr>
+                                                <th className="px-4 py-3 text-center w-12">No</th>
+                                                <th className="px-4 py-3">Unit Kerja</th>
+                                                <th className="px-4 py-3">Pernyataan Risiko</th>
+                                                <th className="px-4 py-3 text-center">Prob</th>
+                                                <th className="px-4 py-3 text-center">Dampak</th>
+                                                <th className="px-4 py-3 text-center">Skor Inherent</th>
+                                                <th className="px-4 py-3 text-center">Status</th>
+                                            </tr>
+                                        )}
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {filteredList.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={config.isKPI ? 6 : 7} className="px-4 py-8 text-center text-slate-400 text-xs">
+                                                    Tidak ada data yang sesuai.
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            filteredList.map((item, idx) => {
+                                                if (config.isKPI) {
+                                                    const t = parseFloat(item.target);
+                                                    const r = parseFloat(item.realisasi);
+                                                    const isAchieved = !isNaN(t) && !isNaN(r) && r >= t;
+                                                    return (
+                                                        <tr key={item.id || idx} className="hover:bg-slate-50/80 transition-colors">
+                                                            <td className="px-4 py-3 text-center font-semibold text-slate-400">{idx + 1}</td>
+                                                            <td className="px-4 py-3 font-semibold text-slate-800">{item.unit_kerja?.nama_unit || '-'}</td>
+                                                            <td className="px-4 py-3 max-w-xs">
+                                                                {item.kode_ikt && <span className="text-[10px] font-mono text-slate-400 block">{item.kode_ikt}</span>}
+                                                                <span className="font-semibold text-slate-700 block">{item.sasaran_strategis}</span>
+                                                                <span className="text-slate-500 line-clamp-1">{item.indikator_kinerja}</span>
+                                                            </td>
+                                                            <td className="px-4 py-3 text-center font-bold">{item.target ?? '-'} {item.satuan || ''}</td>
+                                                            <td className="px-4 py-3 text-center font-bold">{item.realisasi ?? '-'} {item.satuan || ''}</td>
+                                                            <td className="px-4 py-3 text-center">
+                                                                <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${isAchieved ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                                                                    {isAchieved ? 'Tercapai' : 'Belum Tercapai'}
+                                                                </span>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                } else {
+                                                    return (
+                                                        <tr key={item.id || idx} className="hover:bg-slate-50/80 transition-colors">
+                                                            <td className="px-4 py-3 text-center font-semibold text-slate-400">{idx + 1}</td>
+                                                            <td className="px-4 py-3 font-semibold text-slate-800">{item.unit_kerja?.nama_unit || '-'}</td>
+                                                            <td className="px-4 py-3 max-w-xs">
+                                                                {item.kode_risiko && <span className="text-[10px] font-mono text-slate-400 block">{item.kode_risiko}</span>}
+                                                                <span className="line-clamp-2">{item.identifikasi_risiko}</span>
+                                                            </td>
+                                                            <td className="px-4 py-3 text-center font-bold">{item.probabilitas}</td>
+                                                            <td className="px-4 py-3 text-center font-bold">{item.dampak}</td>
+                                                            <td className="px-4 py-3 text-center font-bold">
+                                                                <span className={`px-2 py-0.5 rounded text-[11px] ${item.skor_risiko >= 15 ? 'bg-rose-100 text-rose-700' :
+                                                                    item.skor_risiko >= 10 ? 'bg-orange-100 text-orange-700' :
+                                                                        item.skor_risiko >= 5 ? 'bg-yellow-100 text-yellow-800' : 'bg-emerald-100 text-emerald-700'
+                                                                    }`}>
+                                                                    {item.skor_risiko}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-4 py-3 text-center">
+                                                                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600 uppercase">
+                                                                    {item.status || 'Open'}
+                                                                </span>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                }
+                                            })
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Modal Footer */}
+                <div className="p-4 bg-slate-50 border-t border-slate-200/80 flex justify-between items-center text-xs text-slate-500">
+                    <span>Menampilkan {filteredList.length} data</span>
+                    <button
+                        onClick={onClose}
+                        className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold transition-colors shadow-xs cursor-pointer"
+                    >
+                        Tutup
+                    </button>
+                </div>
+            </div>
+        </div>
     );
 }

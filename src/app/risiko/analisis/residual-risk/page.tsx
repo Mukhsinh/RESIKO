@@ -11,12 +11,13 @@ import DataTable, { type Column } from '@/components/DataTable';
 import RiskHeatmap, { type HeatmapPoint } from '@/components/RiskHeatmap';
 import {
     Plus, FileText, AlertTriangle, ShieldAlert,
-    CheckCircle2, Eye, Edit, Trash2, X, Save, Loader2, TrendingDown
+    CheckCircle2, Eye, Edit, Trash2, X, Save, Loader2, TrendingDown, Search, Info, HelpCircle
 } from 'lucide-react';
 
 /* ─── Types ─────────────────────────────────────────────────────── */
 interface RiskRow {
     id: string;
+    no?: number;
     unit_kerja_id: string;
     tahun: number;
     kode_risiko?: string;
@@ -384,6 +385,7 @@ export default function ResidualRiskPage() {
     const [showModal, setShowModal] = useState(false);
     const [viewRow, setViewRow] = useState<RiskRow | null>(null);
     const [editRow, setEditRow] = useState<Partial<typeof EMPTY_FORM> & { _id?: string } | null>(null);
+    const [detailCardModalType, setDetailCardModalType] = useState<'inherentTinggi' | 'riskAppetite' | 'residualAman' | null>(null);
 
     // Auto-lock unit filter for unit managers
     useEffect(() => {
@@ -446,12 +448,46 @@ export default function ResidualRiskPage() {
             .then(({ data }: { data: any }) => setRiskInputs((data ?? []) as RiskInputOption[]));
     }, []);
 
-    const filtered = rows.filter(d => {
-        const matchSearch = (d.identifikasi_risiko || '').toLowerCase().includes(search.toLowerCase()) ||
-            (d.kode_risiko || '').toLowerCase().includes(search.toLowerCase());
-        const matchUnit = isManager ? isMatchUnit(d.unit_kerja_id, d.unit_kerja) : (unitFilter ? d.unit_kerja_id === unitFilter || (d.unit_kerja as any)?.id === unitFilter : true);
-        return matchSearch && matchUnit;
-    });
+    const filtered = React.useMemo(() => {
+        const rawFiltered = rows.filter(d => {
+            const matchSearch = (d.identifikasi_risiko || '').toLowerCase().includes(search.toLowerCase()) ||
+                (d.kode_risiko || '').toLowerCase().includes(search.toLowerCase());
+            const matchUnit = isManager ? isMatchUnit(d.unit_kerja_id, d.unit_kerja) : (unitFilter ? d.unit_kerja_id === unitFilter || (d.unit_kerja as any)?.id === unitFilter : true);
+            return matchSearch && matchUnit;
+        });
+
+        const unitGroups: Record<string, RiskRow[]> = {};
+        rawFiltered.forEach(r => {
+            const uId = r.unit_kerja_id || (r.unit_kerja as any)?.id || 'default';
+            if (!unitGroups[uId]) unitGroups[uId] = [];
+            unitGroups[uId].push(r);
+        });
+
+        const result: RiskRow[] = [];
+
+        Object.values(unitGroups).forEach(group => {
+            const sortedAsc = [...group].sort((a, b) => {
+                const timeA = new Date(a.created_at || 0).getTime();
+                const timeB = new Date(b.created_at || 0).getTime();
+                if (timeA !== timeB) return timeA - timeB;
+                return (a.kode_risiko || '').localeCompare(b.kode_risiko || '', undefined, { numeric: true });
+            });
+
+            sortedAsc.forEach((item, idx) => {
+                (item as any).no = idx + 1;
+            });
+
+            const sortedDesc = sortedAsc.reverse();
+            result.push(...sortedDesc);
+        });
+
+        return result.sort((a, b) => {
+            if (a.unit_kerja_id === b.unit_kerja_id) {
+                return ((b as any).no || 0) - ((a as any).no || 0);
+            }
+            return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+        });
+    }, [rows, search, isManager, isMatchUnit, unitFilter]);
 
     // Utility for mapping appetite score to 5x5 grid coordinates
     const getAppetiteCoords = (score: number) => {
@@ -466,15 +502,28 @@ export default function ResidualRiskPage() {
     };
 
     // Stats computed from real data
-    const stats = {
-        total: filtered.length,
-        inheritTinggi: filtered.filter(d => d.skor_risiko >= 15).length,
-        residualAman: filtered.filter(d => {
+    const stats = React.useMemo(() => {
+        const total = filtered.length;
+        const inheritTinggi = filtered.filter(d => (d.skor_risiko ?? (d.probabilitas * d.dampak)) >= 15).length;
+        const avgAppetite = total > 0
+            ? +(filtered.reduce((sum, d) => sum + (d.selera_risiko ?? 6), 0) / total).toFixed(1)
+            : 6;
+        const exceededAppetite = filtered.filter(d => (d.skor_risiko ?? (d.probabilitas * d.dampak)) > (d.selera_risiko ?? 6)).length;
+        const residualAman = filtered.filter(d => {
             const res = (d.p_residual ?? Math.ceil(d.probabilitas * 0.5)) * (d.d_residual ?? Math.ceil(d.dampak * 0.8));
             return res < 5;
-        }).length,
-        mitigasiAktif: filtered.filter(d => d.status === 'Mitigasi Berjalan' || d.status === 'Monitoring').length,
-    };
+        }).length;
+        const mitigasiAktif = filtered.filter(d => d.status === 'Mitigasi Berjalan' || d.status === 'Monitoring').length;
+
+        return {
+            total,
+            inheritTinggi,
+            appetite: avgAppetite,
+            exceededAppetite,
+            residualAman,
+            mitigasiAktif
+        };
+    }, [filtered]);
 
     // Heatmap data from DB
     const chartData: HeatmapPoint[] = filtered.flatMap(r => {
@@ -918,14 +967,13 @@ export default function ResidualRiskPage() {
         doc.setTextColor(30, 41, 59); doc.setFontSize(13); doc.setFont('helvetica', 'bold');
         doc.text('D. Rekapitulasi Tabel Analisis Residual Risk', 40, 132);
 
-        let rowIdx = 1;
         const tableData = filtered.map(item => {
             const p_res = item.p_residual ?? Math.ceil(item.probabilitas * 0.5);
             const d_res = item.d_residual ?? Math.ceil(item.dampak * 0.8);
             const skor_res = p_res * d_res;
             const persen_turun = Math.max(0, Math.round((1 - skor_res / Math.max(item.skor_risiko, 1)) * 100));
             return [
-                rowIdx++,
+                (item as any).no ?? '-',
                 (item as any).unit_kerja?.nama_unit || item.master_work_units?.name || '-',
                 item.kode_risiko || '-',
                 item.identifikasi_risiko || '-',
@@ -1021,6 +1069,7 @@ export default function ResidualRiskPage() {
     };
 
     const columns: Column<RiskRow>[] = [
+        { key: 'no', label: 'No', className: 'w-12 text-center', render: r => <span className="font-semibold text-xs text-slate-500">{(r as any).no ?? '-'}</span> },
         { key: 'tahun', label: 'Tahun', className: 'w-20 text-center' },
         { key: 'unit_kerja_id', label: 'Unit Kerja', render: r => (r as any).unit_kerja?.nama_unit ?? '-' },
         {
@@ -1083,15 +1132,80 @@ export default function ResidualRiskPage() {
                 />
             )}
             {viewRow && <ViewModal row={viewRow} onClose={() => setViewRow(null)} />}
+            {detailCardModalType && (
+                <DetailCardModal
+                    type={detailCardModalType}
+                    filtered={filtered}
+                    onClose={() => setDetailCardModalType(null)}
+                />
+            )}
 
             <PageHeader title="Residual Risk" subtitle="Analisis Risiko Inherent vs Residual setelah mitigasi." />
 
             {/* Score Cards */}
-            <div className="grid grid-cols-2 xl:grid-cols-4 gap-5 mb-8">
-                <ScoreCard icon={<ShieldAlert size={22} className="text-slate-500" />} title="Total Evaluasi" value={stats.total} colorClass="bg-slate-50 border-slate-100" />
-                <ScoreCard icon={<AlertTriangle size={22} className="text-rose-500" />} title="Inherent ≥ 15" value={stats.inheritTinggi} colorClass="bg-rose-50 border-rose-100" />
-                <ScoreCard icon={<CheckCircle2 size={22} className="text-emerald-500" />} title="Residual Aman" value={stats.residualAman} subtitle="Skor residual < 5" colorClass="bg-emerald-50 border-emerald-100" />
-                <ScoreCard icon={<FileText size={22} className="text-blue-500" />} title="Mitigasi Aktif" value={stats.mitigasiAktif} colorClass="bg-blue-50 border-blue-100" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-8">
+                <ScoreCard
+                    icon={<ShieldAlert size={22} className="text-slate-500" />}
+                    title="Total Evaluasi"
+                    value={stats.total}
+                    subtitle="Total data risiko"
+                    colorClass="bg-slate-50 border-slate-100"
+                />
+                <ScoreCard
+                    icon={<AlertTriangle size={22} className="text-rose-500" />}
+                    title="Inherent Tinggi"
+                    value={stats.inheritTinggi}
+                    subtitle="Skor Inherent ≥ 15"
+                    colorClass="bg-rose-50 border-rose-100"
+                    action={
+                        <button
+                            onClick={() => setDetailCardModalType('inherentTinggi')}
+                            className="p-1.5 text-rose-400 hover:text-rose-600 hover:bg-rose-100/70 rounded-lg transition-colors"
+                            title="Lihat Detail Rumus & Daftar Risiko"
+                        >
+                            <Eye size={15} />
+                        </button>
+                    }
+                />
+                <ScoreCard
+                    icon={<ShieldAlert size={22} className="text-blue-500" />}
+                    title="Risk Appetite"
+                    value={`≤ ${stats.appetite}`}
+                    subtitle={`${stats.exceededAppetite} melampaui selera`}
+                    colorClass="bg-blue-50 border-blue-100"
+                    action={
+                        <button
+                            onClick={() => setDetailCardModalType('riskAppetite')}
+                            className="p-1.5 text-blue-400 hover:text-blue-600 hover:bg-blue-100/70 rounded-lg transition-colors"
+                            title="Lihat Detail Rumus & Daftar Risiko"
+                        >
+                            <Eye size={15} />
+                        </button>
+                    }
+                />
+                <ScoreCard
+                    icon={<CheckCircle2 size={22} className="text-emerald-500" />}
+                    title="Residual Aman"
+                    value={stats.residualAman}
+                    subtitle="Skor residual < 5"
+                    colorClass="bg-emerald-50 border-emerald-100"
+                    action={
+                        <button
+                            onClick={() => setDetailCardModalType('residualAman')}
+                            className="p-1.5 text-emerald-400 hover:text-emerald-600 hover:bg-emerald-100/70 rounded-lg transition-colors"
+                            title="Lihat Detail Rumus & Daftar Risiko"
+                        >
+                            <Eye size={15} />
+                        </button>
+                    }
+                />
+                <ScoreCard
+                    icon={<FileText size={22} className="text-indigo-500" />}
+                    title="Mitigasi Aktif"
+                    value={stats.mitigasiAktif}
+                    subtitle="Monitoring/Mitigasi"
+                    colorClass="bg-indigo-50 border-indigo-100"
+                />
             </div>
 
             {/* Heatmap */}
@@ -1141,6 +1255,253 @@ export default function ResidualRiskPage() {
                 <DataTable columns={columns} data={filtered} isLoading={loading} />
                 <div className="px-6 py-3 border-t border-slate-50 text-xs text-slate-400">
                     Menampilkan {filtered.length} dari {rows.length} data residual risiko
+                </div>
+            </div>
+        </div>
+    );
+}
+
+/* ─── Detail Card Metric Modal Component ───────────────────────────── */
+function DetailCardModal({
+    type,
+    filtered,
+    onClose
+}: {
+    type: 'inherentTinggi' | 'riskAppetite' | 'residualAman';
+    filtered: RiskRow[];
+    onClose: () => void;
+}) {
+    const [search, setSearch] = useState('');
+
+    const config = React.useMemo(() => {
+        if (type === 'inherentTinggi') {
+            const list = filtered.filter(d => (d.skor_risiko ?? (d.probabilitas * d.dampak)) >= 15);
+            return {
+                title: 'Detail Evaluasi Inherent Risk Tinggi',
+                subtitle: 'Risiko dengan Skor Inherent (Probabilitas × Dampak) Awal ≥ 15',
+                headerGradient: 'from-rose-600 to-rose-700',
+                icon: <AlertTriangle size={24} className="text-white" />,
+                formulaTitle: 'Rumus Perhitungan Inherent Risk Tinggi:',
+                formulaCode: 'Skor Inherent Awal = Probabilitas (1–5) × Dampak (1–5) ≥ 15',
+                explanation: [
+                    'Nilai diperoleh dari perkalian Tingkat Probabilitas dan Dampak Risiko awal yang diidentifikasi sebelum adanya tindakan mitigasi.',
+                    'Kategori Skor ≥ 15 menunjukkan tingkat risiko Ekstrem / Sangat Tinggi yang memerlukan penanganan dan pengawasan prioritas utama.',
+                    `Menampilkan ${list.length} dari total ${filtered.length} risiko yang dievaluasi.`
+                ],
+                statCards: [
+                    { label: 'Total Risiko Inherent Tinggi', val: list.length, color: 'text-rose-600' },
+                    { label: 'Rasio terhadap Total Risiko', val: `${filtered.length > 0 ? Math.round((list.length / filtered.length) * 100) : 0}%`, color: 'text-amber-600' },
+                ],
+                list
+            };
+        } else if (type === 'riskAppetite') {
+            const total = filtered.length;
+            const avgApp = total > 0 ? +(filtered.reduce((sum, d) => sum + (d.selera_risiko ?? 6), 0) / total).toFixed(1) : 6;
+            const exceededList = filtered.filter(d => (d.skor_risiko ?? (d.probabilitas * d.dampak)) > (d.selera_risiko ?? 6));
+            return {
+                title: 'Detail Evaluasi Target Risk Appetite (Selera Risiko)',
+                subtitle: 'Evaluasi Batas Toleransi Selera Risiko Organisasi',
+                headerGradient: 'from-blue-600 to-indigo-700',
+                icon: <ShieldAlert size={24} className="text-white" />,
+                formulaTitle: 'Rumus Perhitungan Risk Appetite & Penetapan Toleransi:',
+                formulaCode: 'Rata-rata Selera Risiko = Σ (Selera Risiko per Risiko) / Total Risiko\nMelampaui Selera = Skor Inherent Awal > Selera Risiko',
+                explanation: [
+                    'Risk Appetite (Selera Risiko) adalah tingkat risiko maksimum yang siap diterima oleh organisasi (Target acuan default: ≤ 6.0).',
+                    'Risiko yang memiliki Skor Inherent > Selera Risiko dikategori sebagai "Melampaui Selera" dan wajib diberi tindakan penanganan mitigasi.',
+                    `Dari total ${filtered.length} risiko, terdapat ${exceededList.length} risiko yang nilainya melampaui batas selera risiko yang ditetapkan.`
+                ],
+                statCards: [
+                    { label: 'Rata-rata Selera Risiko', val: `≤ ${avgApp}`, color: 'text-blue-600' },
+                    { label: 'Melampaui Batas Selera', val: `${exceededList.length} Risiko`, color: 'text-rose-600' },
+                ],
+                list: exceededList
+            };
+        } else {
+            const list = filtered.filter(d => {
+                const res = (d.p_residual ?? Math.ceil(d.probabilitas * 0.5)) * (d.d_residual ?? Math.ceil(d.dampak * 0.8));
+                return res < 5;
+            });
+            return {
+                title: 'Detail Evaluasi Residual Risk Aman',
+                subtitle: 'Risiko dengan Skor Residual setelah mitigasi < 5 (Kategori Rendah/Aman)',
+                headerGradient: 'from-emerald-600 to-teal-700',
+                icon: <CheckCircle2 size={24} className="text-white" />,
+                formulaTitle: 'Rumus Perhitungan Residual Risk Aman:',
+                formulaCode: 'Skor Residual = Probabilitas Residual (P_res) × Dampak Residual (D_res) < 5',
+                explanation: [
+                    'Nilai P_res dan D_res diperoleh dari evaluasi efektivitas tindakan mitigasi/penanganan risiko.',
+                    'Skor Residual < 5 menandakan risiko telah berhasil ditekan dan terkendali pada tingkat Rendah (Aman).',
+                    `Terdapat ${list.length} dari total ${filtered.length} risiko yang telah berhasil dikendalikan di tingkat aman.`
+                ],
+                statCards: [
+                    { label: 'Total Residual Risk Aman', val: list.length, color: 'text-emerald-600' },
+                    { label: 'Tingkat Keberhasilan Mitigasi', val: `${filtered.length > 0 ? Math.round((list.length / filtered.length) * 100) : 0}%`, color: 'text-teal-600' },
+                ],
+                list
+            };
+        }
+    }, [type, filtered]);
+
+    const searchedList = config.list.filter(d =>
+        (d.identifikasi_risiko || '').toLowerCase().includes(search.toLowerCase()) ||
+        (d.kode_risiko || '').toLowerCase().includes(search.toLowerCase()) ||
+        ((d as any).unit_kerja?.nama_unit || '').toLowerCase().includes(search.toLowerCase())
+    );
+
+    return (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden border border-slate-100">
+                {/* Header */}
+                <div className={`p-6 text-white bg-gradient-to-r ${config.headerGradient} flex items-center justify-between`}>
+                    <div className="flex items-center gap-4">
+                        <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-md shrink-0">
+                            {config.icon}
+                        </div>
+                        <div>
+                            <h2 className="text-lg font-bold tracking-tight">{config.title}</h2>
+                            <p className="text-xs text-white/80 mt-0.5">{config.subtitle}</p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={onClose}
+                        className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors cursor-pointer"
+                        title="Tutup"
+                    >
+                        <X size={18} />
+                    </button>
+                </div>
+
+                {/* Body Content */}
+                <div className="p-6 overflow-y-auto space-y-6 flex-1 custom-scrollbar">
+                    {/* Section 1: Rumus & Penjelasan */}
+                    <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-5 space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                                <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+                                {config.formulaTitle}
+                            </h3>
+                            <span className="text-[11px] font-semibold text-slate-400">Sumber Data: Supabase DB (`manajemen_risiko`)</span>
+                        </div>
+
+                        {/* Formula code box */}
+                        <div className="bg-slate-900 text-emerald-400 font-mono text-xs p-3.5 rounded-xl leading-relaxed shadow-inner overflow-x-auto whitespace-pre-line border border-slate-800">
+                            {config.formulaCode}
+                        </div>
+
+                        {/* Explanations */}
+                        <ul className="space-y-2 text-xs text-slate-600">
+                            {config.explanation.map((item, idx) => (
+                                <li key={idx} className="flex items-start gap-2">
+                                    <span className="text-blue-500 font-bold shrink-0">•</span>
+                                    <span>{item}</span>
+                                </li>
+                            ))}
+                        </ul>
+
+                        {/* Quick Stats Grid */}
+                        <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-200/60">
+                            {config.statCards.map((sc, i) => (
+                                <div key={i} className="bg-white p-3.5 rounded-xl border border-slate-200/60 text-center shadow-xs">
+                                    <p className="text-[11px] font-semibold text-slate-400 uppercase">{sc.label}</p>
+                                    <p className={`text-xl font-black mt-1 ${sc.color}`}>{sc.val}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Section 2: Daftar Risiko Terkait */}
+                    <div className="space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                Daftar Risiko Terkait ({config.list.length} Data)
+                            </h3>
+                            <input
+                                type="text"
+                                value={search}
+                                onChange={e => setSearch(e.target.value)}
+                                placeholder="Cari risiko / unit kerja..."
+                                className="px-3.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs w-full sm:w-64 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                            />
+                        </div>
+
+                        <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xs">
+                            <div className="max-h-72 overflow-y-auto">
+                                <table className="w-full text-left text-xs text-slate-600 border-collapse">
+                                    <thead className="bg-slate-100 text-slate-700 font-bold sticky top-0 border-b border-slate-200 z-10">
+                                        <tr>
+                                            <th className="px-4 py-3 text-center w-12">No</th>
+                                            <th className="px-4 py-3">Unit Kerja</th>
+                                            <th className="px-4 py-3">Pernyataan Risiko</th>
+                                            <th className="px-4 py-3 text-center">Inherent</th>
+                                            <th className="px-4 py-3 text-center">Residual</th>
+                                            <th className="px-4 py-3 text-center">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {searchedList.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={6} className="px-4 py-8 text-center text-slate-400 text-xs">
+                                                    Tidak ada data risiko yang sesuai.
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            searchedList.map((r, idx) => {
+                                                const p_res = r.p_residual ?? Math.ceil(r.probabilitas * 0.5);
+                                                const d_res = r.d_residual ?? Math.ceil(r.dampak * 0.8);
+                                                const resScore = p_res * d_res;
+                                                return (
+                                                    <tr key={r.id || idx} className="hover:bg-slate-50/80 transition-colors">
+                                                        <td className="px-4 py-3 text-center font-semibold text-slate-400">
+                                                            {(r as any).no ?? (idx + 1)}
+                                                        </td>
+                                                        <td className="px-4 py-3 font-semibold text-slate-800">
+                                                            {(r as any).unit_kerja?.nama_unit || r.master_work_units?.name || '-'}
+                                                        </td>
+                                                        <td className="px-4 py-3 max-w-xs">
+                                                            {r.kode_risiko && <span className="text-[10px] font-mono text-slate-400 block">{r.kode_risiko}</span>}
+                                                            <span className="line-clamp-2">{r.identifikasi_risiko}</span>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-center font-bold">
+                                                            <span className={`px-2 py-0.5 rounded text-[11px] ${r.skor_risiko >= 15 ? 'bg-rose-100 text-rose-700' :
+                                                                r.skor_risiko >= 10 ? 'bg-orange-100 text-orange-700' :
+                                                                    r.skor_risiko >= 5 ? 'bg-yellow-100 text-yellow-800' : 'bg-emerald-100 text-emerald-700'
+                                                                }`}>
+                                                                {r.skor_risiko}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-center font-bold">
+                                                            <span className={`px-2 py-0.5 rounded text-[11px] ${resScore >= 15 ? 'bg-rose-100 text-rose-700' :
+                                                                resScore >= 10 ? 'bg-orange-100 text-orange-700' :
+                                                                    resScore >= 5 ? 'bg-yellow-100 text-yellow-800' : 'bg-emerald-100 text-emerald-700'
+                                                                }`}>
+                                                                {resScore}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-center">
+                                                            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600 uppercase">
+                                                                {r.status || 'Open'}
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Footer */}
+                <div className="p-4 bg-slate-50 border-t border-slate-200/80 flex justify-between items-center text-xs text-slate-500">
+                    <span>Menampilkan {searchedList.length} dari {config.list.length} data</span>
+                    <button
+                        onClick={onClose}
+                        className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold transition-colors shadow-xs cursor-pointer"
+                    >
+                        Tutup
+                    </button>
                 </div>
             </div>
         </div>

@@ -13,6 +13,17 @@ interface RiskHeatmapProps {
     data: HeatmapPoint[];
 }
 
+export function getAppetiteCoords(score: number) {
+    const sc = Math.max(1, Math.min(25, score));
+    if (sc <= 2) return { p: 1, d: sc };
+    if (sc <= 4) return { p: 2, d: Math.ceil(sc / 2) };
+    if (sc <= 6) return { p: 2, d: 3 };
+    if (sc <= 9) return { p: 3, d: Math.ceil(sc / 3) };
+    if (sc <= 12) return { p: 3, d: 4 };
+    if (sc <= 16) return { p: 4, d: 4 };
+    return { p: 5, d: 5 };
+}
+
 const PROB_LABELS = ['', 'Sangat Jarang', 'Jarang', 'Kadang', 'Sering', 'Sangat Sering'];
 const IMPACT_LABELS = ['', 'Sangat Ringan', 'Ringan', 'Sedang', 'Berat', 'Sangat Berat'];
 

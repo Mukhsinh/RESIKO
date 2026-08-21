@@ -18,6 +18,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, Respon
 /* ─── Types ─────────────────────────────────────────────────────── */
 interface RiskRow {
     id: string;
+    no?: number;
     unit_kerja_id: string;
     tahun: number;
     kode_risiko?: string;
@@ -480,13 +481,47 @@ export default function RiskProfilePage() {
             .then(({ data }: { data: any }) => setRiskInputs((data ?? []) as RiskInputOption[]));
     }, []);
 
-    const filtered = rows.filter(d => {
-        const matchSearch = (d.identifikasi_risiko || '').toLowerCase().includes(search.toLowerCase()) || (d.kode_risiko || '').toLowerCase().includes(search.toLowerCase());
-        const matchUnit = isManager
-            ? isMatchUnit(d.unit_kerja_id, d.unit_kerja)
-            : (unitFilter ? d.unit_kerja_id === unitFilter || (d.unit_kerja as any)?.id === unitFilter : true);
-        return matchSearch && matchUnit;
-    });
+    const filtered = React.useMemo(() => {
+        const rawFiltered = rows.filter(d => {
+            const matchSearch = (d.identifikasi_risiko || '').toLowerCase().includes(search.toLowerCase()) || (d.kode_risiko || '').toLowerCase().includes(search.toLowerCase());
+            const matchUnit = isManager
+                ? isMatchUnit(d.unit_kerja_id, d.unit_kerja)
+                : (unitFilter ? d.unit_kerja_id === unitFilter || (d.unit_kerja as any)?.id === unitFilter : true);
+            return matchSearch && matchUnit;
+        });
+
+        const unitGroups: Record<string, RiskRow[]> = {};
+        rawFiltered.forEach(r => {
+            const uId = r.unit_kerja_id || (r.unit_kerja as any)?.id || 'default';
+            if (!unitGroups[uId]) unitGroups[uId] = [];
+            unitGroups[uId].push(r);
+        });
+
+        const result: RiskRow[] = [];
+
+        Object.values(unitGroups).forEach(group => {
+            const sortedAsc = [...group].sort((a, b) => {
+                const timeA = new Date(a.created_at || 0).getTime();
+                const timeB = new Date(b.created_at || 0).getTime();
+                if (timeA !== timeB) return timeA - timeB;
+                return (a.kode_risiko || '').localeCompare(b.kode_risiko || '', undefined, { numeric: true });
+            });
+
+            sortedAsc.forEach((item, idx) => {
+                (item as any).no = idx + 1;
+            });
+
+            const sortedDesc = sortedAsc.reverse();
+            result.push(...sortedDesc);
+        });
+
+        return result.sort((a, b) => {
+            if (a.unit_kerja_id === b.unit_kerja_id) {
+                return ((b as any).no || 0) - ((a as any).no || 0);
+            }
+            return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+        });
+    }, [rows, search, isManager, isMatchUnit, unitFilter]);
 
     const stats = {
         total: filtered.length,
@@ -985,11 +1020,10 @@ export default function RiskProfilePage() {
         doc.setFont('helvetica', 'bold');
         doc.text('D. Rekapitulasi Data Profil Risiko', 40, 75);
 
-        let rowIdx = 1;
         const tableData = filtered.map(item => {
             const skor_res = (item.p_residual ?? Math.ceil(item.probabilitas * 0.5)) * (item.d_residual ?? Math.ceil(item.dampak * 0.8));
             return [
-                rowIdx++,
+                (item as any).no ?? '-',
                 item.kode_risiko || '-',
                 (item as any).unit_kerja?.nama_unit || item.master_work_units?.name || '-',
                 item.identifikasi_risiko || '-',
@@ -1086,6 +1120,7 @@ export default function RiskProfilePage() {
     };
 
     const columns: Column<RiskRow>[] = [
+        { key: 'no', label: 'No', className: 'w-12 text-center', render: r => <span className="font-semibold text-xs text-slate-500">{(r as any).no ?? '-'}</span> },
         { key: 'kode_risiko', label: 'Kode', className: 'w-24', render: r => <span className="font-mono text-xs">{r.kode_risiko || '-'}</span> },
         { key: 'tahun', label: 'Tahun', className: 'w-16 text-center' },
         { key: 'unit_kerja_id', label: 'Unit Kerja', render: r => (r as any).unit_kerja?.nama_unit ?? r.master_work_units?.name ?? '-' },
