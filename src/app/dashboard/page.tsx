@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useAppSettings } from '@/hooks/useAppSettings';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { evaluateKpi, getDisplayRealisasi } from '@/app/strategi/monitoring/page';
 import RiskHeatmap, { getAppetiteCoords, type HeatmapPoint } from '@/components/RiskHeatmap';
 import {
     PieChart, Pie, Cell, ResponsiveContainer,
@@ -41,15 +42,57 @@ const CustomDonutTooltip = ({ active, payload }: any) => {
     return null;
 };
 
+const CustomBarTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+        return (
+            <div className="bg-slate-900/95 text-white p-3.5 rounded-2xl shadow-xl border border-slate-700/50 backdrop-blur-md text-xs space-y-1.5 animate-in fade-in duration-150 min-w-[200px]">
+                <p className="font-bold text-sm text-slate-100 border-b border-slate-700/80 pb-1.5 mb-2">{label}</p>
+                {payload.map((entry: any, index: number) => (
+                    <div key={`item-${index}`} className="flex items-center justify-between gap-4 font-semibold">
+                        <span className="flex items-center gap-1.5" style={{ color: entry.color }}>
+                            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: entry.color }} />
+                            {entry.name}:
+                        </span>
+                        <span className="font-bold text-white text-sm">{entry.value}</span>
+                    </div>
+                ))}
+            </div>
+        );
+    }
+    return null;
+};
+
+export function parseNumericRealisasi(realisasiVal: any): number {
+    if (realisasiVal === null || realisasiVal === undefined || realisasiVal === '') return NaN;
+    if (typeof realisasiVal === 'number') return realisasiVal;
+    const str = String(realisasiVal).trim();
+    if (str.startsWith('{')) {
+        try {
+            const parsed = JSON.parse(str);
+            if (parsed.rata_rata != null && !isNaN(Number(parsed.rata_rata))) {
+                return Number(parsed.rata_rata);
+            }
+            if (Array.isArray(parsed.inputs) && parsed.inputs.length > 0) {
+                const nums = parsed.inputs.map((v: any) => parseFloat(v)).filter((v: number) => !isNaN(v));
+                if (nums.length > 0) return nums[nums.length - 1];
+            }
+        } catch (e) {
+            // ignore
+        }
+    }
+    return parseFloat(str);
+}
+
 export default function DashboardPage() {
-    const { settings } = useAppSettings();
+    const { settings, yearsList } = useAppSettings();
     const { profile } = useUserProfile();
 
-    const [cardModalType, setCardModalType] = useState<'targetKpi' | 'totalRisiko' | 'risikoTinggi' | 'risikoBerjalan' | null>(null);
+    const [cardModalType, setCardModalType] = useState<'targetKpi' | 'totalRisiko' | 'risikoTinggi' | 'risikoBerjalan' | 'risikoAppetite' | null>(null);
 
     const [stats, setStats] = useState({
         totalRisiko: 0,
         risikoTinggi: 0,
+        risikoSesuaiAppetite: 0,
         risikoBerjalan: 0,
         totalStrategi: 0,
         strategiTercapai: 0,
@@ -57,6 +100,7 @@ export default function DashboardPage() {
         avgRiskScore: 0,
         risikoSedang: 0,
         risikoRendah: 0,
+        overallCapaianPct: 0,
     });
     const [selectedUnit, setSelectedUnit] = useState<string>('all');
     const [selectedYear, setSelectedYear] = useState<string>(String(new Date().getFullYear()));
@@ -78,21 +122,34 @@ export default function DashboardPage() {
         }
     }, [profile]);
 
-    // Fetch lists for filters
+    const yearsKey = yearsList.join(',');
+
+    // Fetch lists for filters & sync selected year
     useEffect(() => {
         const fetchFilters = async () => {
-            const { data: unitsData } = await supabase.from('unit_kerja').select('id, nama_unit').order('nama_unit');
+            const { data: unitsData } = await supabase.from('unit_kerja').select('id, nama_unit').order('nama_unit', { ascending: true });
             if (unitsData) setUnits(unitsData);
 
             const { data: yearsData } = await supabase.from('tahun_anggaran').select('tahun').order('tahun', { ascending: false });
+            let combined = yearsList;
             if (yearsData && yearsData.length > 0) {
-                setYears(yearsData.map((y: any) => y.tahun));
-            } else {
-                setYears([2024, 2025, 2026, 2027]);
+                const fetchedYears = yearsData.map((y: any) => y.tahun);
+                combined = Array.from(new Set([...yearsList, ...fetchedYears])).sort((a, b) => b - a);
+            }
+            setYears(combined);
+
+            const currentY = new Date().getFullYear();
+            if (combined.length > 0) {
+                setSelectedYear(prev => {
+                    const prevNum = Number(prev);
+                    if (combined.includes(prevNum)) return prev;
+                    if (combined.includes(currentY)) return String(currentY);
+                    return String(combined[0]);
+                });
             }
         };
         fetchFilters();
-    }, []);
+    }, [yearsKey]);
 
     // Fetch dashboard stats
     useEffect(() => {
@@ -101,10 +158,12 @@ export default function DashboardPage() {
             try {
                 let queryRisiko = supabase.from('manajemen_risiko').select('*');
                 let queryStrategi = supabase.from('manajemen_strategi').select('*');
+                let queryCascading = supabase.from('cascading_kpi').select('*');
 
                 if (selectedYear) {
                     queryRisiko = queryRisiko.eq('tahun', Number(selectedYear));
                     queryStrategi = queryStrategi.eq('tahun', Number(selectedYear));
+                    queryCascading = queryCascading.eq('tahun', Number(selectedYear));
                 }
 
                 // If user is a user_unit manager, ignore selection and lock to their own unit_kerja_id
@@ -112,11 +171,17 @@ export default function DashboardPage() {
                 if (unitToFilter) {
                     queryRisiko = queryRisiko.eq('unit_kerja_id', unitToFilter);
                     queryStrategi = queryStrategi.eq('unit_kerja_id', unitToFilter);
+                    queryCascading = queryCascading.eq('unit_kerja_id', unitToFilter);
                 }
 
-                const [{ data: risikoData, error: rErr }, { data: strategiData, error: sErr }] = await Promise.all([
+                const [
+                    { data: risikoData, error: rErr },
+                    { data: strategiData, error: sErr },
+                    { data: cascadingData }
+                ] = await Promise.all([
                     queryRisiko,
                     queryStrategi,
+                    queryCascading
                 ]);
 
                 if (rErr) console.warn('Risiko fetch warning:', rErr.message || rErr.details || rErr);
@@ -124,34 +189,63 @@ export default function DashboardPage() {
 
                 let currentUnits = units;
                 if (currentUnits.length === 0) {
-                    const { data: uData } = await supabase.from('unit_kerja').select('id, nama_unit');
+                    const { data: uData } = await supabase.from('unit_kerja').select('id, nama_unit').order('nama_unit', { ascending: true });
                     if (uData) currentUnits = uData;
                 }
                 const unitMap = new Map(currentUnits.map(u => [u.id, u.nama_unit]));
 
+                const cascadingMap = new Map<string, string>();
+                ((cascadingData as any[]) ?? []).forEach(c => {
+                    if (c.kpi && c.kriteria_nilai) {
+                        cascadingMap.set(`${c.kpi}_${c.unit_kerja_id}`, c.kriteria_nilai);
+                        cascadingMap.set(c.kpi, c.kriteria_nilai);
+                    }
+                });
+
                 const rawRList = (risikoData as any[]) ?? [];
                 const rawSList = (strategiData as any[]) ?? [];
 
-                const rList = rawRList.map(r => ({
-                    ...r,
-                    unit_kerja: { nama_unit: unitMap.get(r.unit_kerja_id) || '-' }
-                }));
-                const sList = rawSList.map(s => ({
-                    ...s,
-                    unit_kerja: { nama_unit: unitMap.get(s.unit_kerja_id) || '-' }
-                }));
+                const rList = rawRList.map(r => {
+                    const skorInherent = r.skor_risiko ?? (r.probabilitas ?? 0) * (r.dampak ?? 0);
+                    return {
+                        ...r,
+                        skor_risiko: skorInherent,
+                        unit_kerja: { nama_unit: unitMap.get(r.unit_kerja_id) || '-' }
+                    };
+                });
+
+                const sList = rawSList.map(s => {
+                    const crit = cascadingMap.get(`${s.kpi}_${s.unit_kerja_id}`) || cascadingMap.get(s.kpi) || null;
+                    const evalRes = evaluateKpi(s.target, s.realisasi, crit);
+                    const displayVal = getDisplayRealisasi(s.realisasi);
+                    const isMonitored = displayVal !== '-' && s.realisasi !== null && s.realisasi !== '';
+                    return {
+                        ...s,
+                        unit_kerja: { nama_unit: unitMap.get(s.unit_kerja_id) || '-' },
+                        crit,
+                        evalRes,
+                        displayRealisasi: displayVal,
+                        isMonitored,
+                        isAchieved: evalRes.pct >= 100
+                    };
+                });
 
                 const totalRisiko = rList.length;
                 const risikoTinggi = rList.filter(r => r.skor_risiko >= 15).length;
-                const risikoSedang = rList.filter(r => r.skor_risiko >= 5 && r.skor_risiko < 15).length;
+                const risikoSedang = rList.filter(r => r.skor_risiko >= 5 && r.skor_risiko < 10).length;
                 const risikoRendah = rList.filter(r => r.skor_risiko < 5).length;
                 const totalStrategi = sList.length;
 
-                const strategiTercapai = sList.filter(s => {
-                    const t = parseFloat(s.target), r = parseFloat(s.realisasi);
-                    return !isNaN(t) && !isNaN(r) && r >= t;
-                }).length;
+                const strategiTercapai = sList.filter(s => s.isAchieved).length;
 
+                const monitoredList = sList.filter(s => s.isMonitored);
+                const grandTargetSkor = monitoredList.reduce((acc, curr) => acc + (curr.evalRes?.targetSkor || 0), 0);
+                const grandRealSkor = monitoredList.reduce((acc, curr) => acc + (curr.evalRes?.realisasiSkor || 0), 0);
+                const overallCapaianPct = grandTargetSkor > 0
+                    ? parseFloat(((grandRealSkor / grandTargetSkor) * 100).toFixed(1))
+                    : (monitoredList.length > 0 ? parseFloat(((strategiTercapai / monitoredList.length) * 100).toFixed(1)) : 0);
+
+                const risikoSesuaiAppetite = rList.filter(r => (r.skor_risiko ?? 0) <= (r.selera_risiko ?? 6)).length;
                 const closedRisks = rList.filter(r => r.status === 'Closed').length;
                 const totalRiskScore = rList.reduce((sum, r) => sum + (r.skor_risiko || 0), 0);
                 const avgRiskScore = totalRisiko > 0 ? Math.round((totalRiskScore / totalRisiko) * 10) / 10 : 0;
@@ -159,6 +253,7 @@ export default function DashboardPage() {
                 setStats({
                     totalRisiko,
                     risikoTinggi,
+                    risikoSesuaiAppetite,
                     risikoBerjalan: totalRisiko - closedRisks,
                     totalStrategi,
                     strategiTercapai,
@@ -166,6 +261,7 @@ export default function DashboardPage() {
                     avgRiskScore,
                     risikoSedang,
                     risikoRendah,
+                    overallCapaianPct,
                 });
 
                 setRawRisiko(rList);
@@ -229,16 +325,23 @@ export default function DashboardPage() {
                 groups[unitName] = { total: 0, tercapai: 0 };
             }
             groups[unitName].total += 1;
-            const t = parseFloat(s.target), r = parseFloat(s.realisasi);
-            if (!isNaN(t) && !isNaN(r) && r >= t) {
+            if (s.isAchieved) {
                 groups[unitName].tercapai += 1;
             }
         });
-        return Object.keys(groups).map(name => ({
-            name,
-            'Total Indikator': groups[name].total,
-            'Tercapai': groups[name].tercapai,
-        })).slice(0, 8); // Top 8 units
+        return Object.keys(groups)
+            .sort((a, b) => a.localeCompare(b, 'id'))
+            .map(name => {
+                const total = groups[name].total;
+                const tercapai = groups[name].tercapai;
+                const belumTercapai = Math.max(0, total - tercapai);
+                return {
+                    name,
+                    'Tercapai': tercapai,
+                    'Belum Tercapai': belumTercapai,
+                    'Total Indikator': total,
+                };
+            });
     };
 
     const kpiPerUnitData = getKpiPerUnitData();
@@ -260,20 +363,13 @@ export default function DashboardPage() {
     // Top 5 risks
     const topRisks = [...rawRisiko].sort((a, b) => b.skor_risiko - a.skor_risiko).slice(0, 5);
 
-    // KPI Failures
+    // KPI Failures (Realisasi < Target / Unachieved)
     const kpiFailures = [...rawStrategi]
-        .filter(s => {
-            const t = parseFloat(s.target), r = parseFloat(s.realisasi);
-            return !isNaN(t) && !isNaN(r) && r < t;
-        })
-        .sort((a, b) => {
-            const pctA = parseFloat(a.realisasi) / parseFloat(a.target);
-            const pctB = parseFloat(b.realisasi) / parseFloat(b.target);
-            return pctA - pctB;
-        })
+        .filter(s => !s.isAchieved && (s.isMonitored || s.realisasi !== null))
+        .sort((a, b) => (a.evalRes?.pct ?? 0) - (b.evalRes?.pct ?? 0))
         .slice(0, 5);
 
-    const kpiPct = stats.totalStrategi ? Math.round(stats.strategiTercapai * 100 / stats.totalStrategi) : 0;
+    const kpiPct = stats.overallCapaianPct ?? 0;
     const closedPct = stats.totalRisiko ? Math.round(stats.risikoClosed * 100 / stats.totalRisiko) : 0;
 
     return (
@@ -338,9 +434,9 @@ export default function DashboardPage() {
                         <p className="text-2xl font-black text-white">{closedPct}%</p>
                         <p className="text-[10px] text-emerald-100 font-bold uppercase mt-1 font-sans">Mitigasi Selesai</p>
                     </div>
-                    <div className="bg-rose-600 rounded-2xl p-4 text-center shadow-sm hover:shadow-md transition-shadow">
-                        <p className="text-2xl font-black text-white">{stats.risikoTinggi}</p>
-                        <p className="text-[10px] text-rose-100 font-bold uppercase mt-1 font-sans">Risiko Sangat Tinggi</p>
+                    <div className="bg-teal-600 rounded-2xl p-4 text-center shadow-sm hover:shadow-md transition-shadow">
+                        <p className="text-2xl font-black text-white">{stats.risikoSesuaiAppetite}</p>
+                        <p className="text-[10px] text-teal-100 font-bold uppercase mt-1 font-sans">Risiko Inherent Sesuai Appetite</p>
                     </div>
                     <div className="bg-amber-500 rounded-2xl p-4 text-center shadow-sm hover:shadow-md transition-shadow">
                         <p className="text-2xl font-black text-white">{stats.avgRiskScore}</p>
@@ -394,16 +490,16 @@ export default function DashboardPage() {
                     }
                 />
                 <ScoreCard
-                    icon={<AlertTriangle size={22} className="text-amber-500" />}
-                    title="Risiko Sangat Tinggi"
-                    value={stats.risikoTinggi}
-                    subtitle="Memerlukan respon eskalasi segera"
-                    colorClass="bg-white border-slate-200/80 shadow-xs hover:border-amber-300"
+                    icon={<ShieldCheck size={22} className="text-teal-500" />}
+                    title="Risiko Inherent Sesuai Appetite"
+                    value={stats.risikoSesuaiAppetite}
+                    subtitle="Skor inherent <= selera risiko"
+                    colorClass="bg-white border-slate-200/80 shadow-xs hover:border-teal-300"
                     action={
                         <button
-                            onClick={() => setCardModalType('risikoTinggi')}
-                            className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
-                            title="Lihat Detail Risiko Sangat Tinggi"
+                            onClick={() => setCardModalType('risikoAppetite')}
+                            className="p-1 text-slate-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors cursor-pointer"
+                            title="Lihat Detail Risiko Inherent Sesuai Appetite"
                         >
                             <Eye size={15} />
                         </button>
@@ -529,20 +625,38 @@ export default function DashboardPage() {
                     {/* 3. KPI Achievement Bar Chart per Unit */}
                     {kpiPerUnitData.length > 0 && (
                         <div className="card bg-white border border-slate-200/60 shadow-xs p-6 sm:p-8 rounded-3xl">
-                            <h3 className="font-bold text-slate-800 text-base mb-1 flex items-center gap-2">
-                                <Target size={20} className="text-[#137fec]" /> Tren Pencapaian KPI per Unit Kerja
-                            </h3>
-                            <p className="text-xs text-slate-400 font-medium mb-6">Membandingkan target sasaran strategis dengan capaian realisasi</p>
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-6">
+                                <div>
+                                    <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
+                                        <Target size={20} className="text-[#137fec]" /> Tren Pencapaian KPI per Unit Kerja
+                                    </h3>
+                                    <p className="text-xs text-slate-400 font-medium mt-0.5">Membandingkan target sasaran strategis dengan capaian realisasi</p>
+                                </div>
+                                <div className="flex items-center gap-4 text-xs font-semibold self-start sm:self-auto bg-slate-50 border border-slate-200/80 px-3 py-1.5 rounded-xl">
+                                    <span className="flex items-center gap-1.5 text-emerald-700">
+                                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                                        Tercapai
+                                    </span>
+                                    <span className="flex items-center gap-1.5 text-rose-700">
+                                        <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                                        Belum Tercapai
+                                    </span>
+                                    <span className="flex items-center gap-1.5 text-blue-700">
+                                        <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                                        Total
+                                    </span>
+                                </div>
+                            </div>
                             <div className="h-72 w-full block relative">
                                 <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                                     <BarChart data={kpiPerUnitData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                                        <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} fontWeight="600" />
-                                        <YAxis stroke="#94a3b8" fontSize={10} fontWeight="400" />
-                                        <Tooltip />
+                                        <XAxis dataKey="name" stroke="#64748b" fontSize={10} fontWeight="600" />
+                                        <YAxis stroke="#64748b" fontSize={10} fontWeight="500" />
+                                        <Tooltip content={<CustomBarTooltip />} />
                                         <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-                                        <Bar dataKey="Total Indikator" fill="#cbd5e1" radius={[4, 4, 0, 0]} />
-                                        <Bar dataKey="Tercapai" fill="#137fec" radius={[4, 4, 0, 0]} />
+                                        <Bar dataKey="Tercapai" fill="#10b981" radius={[4, 4, 0, 0]} />
+                                        <Bar dataKey="Total Indikator" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                                     </BarChart>
                                 </ResponsiveContainer>
                             </div>
@@ -569,7 +683,7 @@ export default function DashboardPage() {
                                             {index + 1}
                                         </span>
                                         <div>
-                                            <p className="text-xs font-bold text-slate-800 line-clamp-1">{risk.identifikasi_risiko}</p>
+                                            <p className="text-xs font-bold text-slate-800 break-words leading-snug">{risk.identifikasi_risiko}</p>
                                             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{risk.unit_kerja?.nama_unit || '-'}</p>
                                         </div>
                                     </div>
@@ -592,43 +706,81 @@ export default function DashboardPage() {
 
                 {/* KPI Perlu Perhatian */}
                 <div className="card bg-white border border-slate-200/60 shadow-xs p-6 rounded-3xl">
-                    <h3 className="font-bold text-slate-800 text-sm mb-4 flex items-center gap-2">
-                        <TrendingUp size={16} className="text-amber-500" /> KPI Perlu Atensi (Realisasi &lt; Target)
-                    </h3>
-                    <div className="space-y-3">
-                        {kpiFailures.length === 0 ? (
-                            <p className="text-xs text-slate-400 font-medium py-6 text-center">Seluruh target KPI telah terpenuhi dengan baik!</p>
-                        ) : (
-                            kpiFailures.map((kpiData, index) => {
-                                const tVal = parseFloat(kpiData.target);
-                                const rVal = parseFloat(kpiData.realisasi) || 0;
-                                const devPct = tVal > 0 ? Math.round(rVal * 100 / tVal) : 0;
-                                return (
-                                    <div key={kpiData.id} className="flex items-center justify-between p-3.5 bg-slate-50 hover:bg-slate-100/50 rounded-2xl border border-slate-100 transition-colors gap-3">
-                                        <div className="flex items-center gap-3">
-                                            <span className="w-6 h-6 rounded-full bg-amber-100 text-amber-800 text-xs font-bold flex items-center justify-center shrink-0">
-                                                {index + 1}
-                                            </span>
-                                            <div>
-                                                <p className="text-xs font-bold text-slate-800 line-clamp-1">{kpiData.kpi}</p>
-                                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{kpiData.unit_kerja?.nama_unit || '-'}</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-4 text-right shrink-0">
-                                            <div className="text-xs font-semibold">
-                                                <span className="text-slate-400 text-[10px]">Tgt: {kpiData.target}</span>
-                                                <span className="text-slate-300 mx-1">|</span>
-                                                <span className="text-slate-650">Real: {kpiData.realisasi || '0'}</span>
-                                            </div>
-                                            <span className="text-xs font-black text-rose-500 bg-rose-50 px-2 py-1 rounded-lg">
-                                                {devPct}%
-                                            </span>
-                                        </div>
-                                    </div>
-                                );
-                            })
-                        )}
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                            <TrendingUp size={16} className="text-amber-500" /> KPI Perlu Atensi (Realisasi &lt; Target)
+                        </h3>
+                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200/60 px-2 py-0.5 rounded-full">
+                            5 Terendah
+                        </span>
                     </div>
+                    {kpiFailures.length === 0 ? (
+                        <p className="text-xs text-slate-400 font-medium py-6 text-center">Seluruh target KPI telah terpenuhi dengan baik!</p>
+                    ) : (
+                        <div className="w-full">
+                            <table className="w-full text-left border-collapse text-xs">
+                                <thead>
+                                    <tr className="border-b border-slate-200/80 bg-slate-50/80 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                                        <th className="py-2 px-1 text-center w-7">No</th>
+                                        <th className="py-2 px-2">Indikator KPI</th>
+                                        <th className="py-2 px-1.5 text-center w-28">Unit Kerja</th>
+                                        <th className="py-2 px-1 text-center w-16">Target</th>
+                                        <th className="py-2 px-1 text-center w-16">Realisasi</th>
+                                        <th className="py-2 px-1 text-center w-28">Capaian</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {kpiFailures.map((kpiData, index) => {
+                                        const realVal = kpiData.displayRealisasi || getDisplayRealisasi(kpiData.realisasi);
+                                        const evalRes = kpiData.evalRes || evaluateKpi(kpiData.target, kpiData.realisasi, kpiData.crit);
+                                        const devPct = Math.round(evalRes?.pct ?? 0);
+                                        const clampedPct = Math.min(Math.max(devPct, 0), 120);
+                                        const needleAngle = -90 + (clampedPct / 120) * 180;
+                                        return (
+                                            <tr key={kpiData.id || index} className="hover:bg-slate-50/80 transition-colors">
+                                                <td className="py-2 px-1 text-center font-bold text-slate-400 text-[11px]">{index + 1}</td>
+                                                <td className="py-2 px-2">
+                                                    <span className="font-semibold text-slate-800 break-words leading-tight block text-[11px]">{kpiData.kpi}</span>
+                                                </td>
+                                                <td className="py-2 px-1.5 text-center text-slate-600 font-medium text-[10px] break-words">
+                                                    {kpiData.unit_kerja?.nama_unit || '-'}
+                                                </td>
+                                                <td className="py-2 px-1 text-center">
+                                                    <span className="bg-slate-100 text-slate-700 px-1 py-0.5 rounded text-[10px] font-mono">{kpiData.target ?? '-'}</span>
+                                                </td>
+                                                <td className="py-2 px-1 text-center">
+                                                    <span className="bg-amber-50 text-amber-900 border border-amber-200/60 px-1 py-0.5 rounded text-[10px] font-mono font-semibold">{realVal}</span>
+                                                </td>
+                                                <td className="py-2 px-1 text-center">
+                                                    <div className="flex items-center justify-center gap-1.5 py-0.5 select-none">
+                                                        <div className="w-8 h-4 shrink-0 flex items-center justify-center">
+                                                            <svg className="w-full h-full" viewBox="0 0 60 32" preserveAspectRatio="xMidYMid meet">
+                                                                <path d="M 5 28 A 23 23 0 0 1 55 28" fill="none" stroke="#f1f5f9" strokeWidth="5.5" strokeLinecap="round" />
+                                                                <path d="M 5 28 A 23 23 0 0 1 17.5 15.5" fill="none" stroke="#ef4444" strokeWidth="5.5" />
+                                                                <path d="M 17.5 15.5 A 23 23 0 0 1 24 10.5" fill="none" stroke="#f59e0b" strokeWidth="5.5" />
+                                                                <path d="M 24 10.5 A 23 23 0 0 1 42.5 10.5" fill="none" stroke="#3b82f6" strokeWidth="5.5" />
+                                                                <path d="M 42.5 10.5 A 23 23 0 0 1 55 28" fill="none" stroke="#10b981" strokeWidth="5.5" strokeLinecap="round" />
+                                                                <g transform={`rotate(${needleAngle} 30 28)`} className="transition-transform duration-500 ease-out">
+                                                                    <line x1="30" y1="28" x2="30" y2="9" stroke="#1e293b" strokeWidth="2.5" strokeLinecap="round" />
+                                                                </g>
+                                                                <circle cx="30" cy="28" r="3.5" fill="#1e293b" />
+                                                                <circle cx="30" cy="28" r="1.2" fill="#ffffff" />
+                                                            </svg>
+                                                        </div>
+                                                        <div className="flex flex-col items-start leading-none gap-0.5">
+                                                            <span className={`text-[9px] font-black px-1 py-0.5 rounded border ${evalRes.statusClass}`}>
+                                                                {devPct}%
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -689,7 +841,7 @@ function DashboardCardDetailModal({
     rawStrategi,
     onClose
 }: {
-    type: 'targetKpi' | 'totalRisiko' | 'risikoTinggi' | 'risikoBerjalan';
+    type: 'targetKpi' | 'totalRisiko' | 'risikoTinggi' | 'risikoBerjalan' | 'risikoAppetite';
     rawRisiko: any[];
     rawStrategi: any[];
     onClose: () => void;
@@ -699,10 +851,7 @@ function DashboardCardDetailModal({
     const config = React.useMemo(() => {
         if (type === 'targetKpi') {
             const list = rawStrategi;
-            const tercapai = list.filter(s => {
-                const t = parseFloat(s.target), r = parseFloat(s.realisasi);
-                return !isNaN(t) && !isNaN(r) && r >= t;
-            });
+            const tercapai = list.filter(s => s.isAchieved);
             const pct = list.length > 0 ? Math.round((tercapai.length / list.length) * 100) : 0;
             return {
                 title: 'Detail Target KPI Utama & Sasaran Strategis',
@@ -744,6 +893,21 @@ function DashboardCardDetailModal({
                 statCards: [
                     { label: 'Jumlah Risiko Sangat Tinggi', val: list.length, color: 'text-rose-600' },
                     { label: 'Rasio Terhadap Total Risiko', val: `${rawRisiko.length > 0 ? Math.round((list.length / rawRisiko.length) * 100) : 0}%`, color: 'text-amber-600' },
+                ],
+                isKPI: false,
+                list
+            };
+        } else if (type === 'risikoAppetite') {
+            const list = rawRisiko.filter(r => (r.skor_risiko ?? 0) <= (r.selera_risiko ?? 6));
+            return {
+                title: 'Detail Risiko Inherent Sesuai Appetite Target',
+                subtitle: 'Risiko dengan Skor Inherent (P × D) ≤ Selera Risiko Target (Batas Toleransi)',
+                headerGradient: 'from-teal-600 to-emerald-700',
+                icon: <ShieldCheck size={24} className="text-white" />,
+                statCards: [
+                    { label: 'Risiko Sesuai Appetite', val: list.length, color: 'text-teal-600' },
+                    { label: 'Rasio Terhadap Total Risiko', val: `${rawRisiko.length > 0 ? Math.round((list.length / rawRisiko.length) * 100) : 0}%`, color: 'text-emerald-600' },
+                    { label: 'Melebihi Appetite', val: `${rawRisiko.length - list.length} Risiko`, color: 'text-rose-600' },
                 ],
                 isKPI: false,
                 list
@@ -869,9 +1033,8 @@ function DashboardCardDetailModal({
                                         ) : (
                                             filteredList.map((item, idx) => {
                                                 if (config.isKPI) {
-                                                    const t = parseFloat(item.target);
-                                                    const r = parseFloat(item.realisasi);
-                                                    const isAchieved = !isNaN(t) && !isNaN(r) && r >= t;
+                                                    const isAchieved = item.isAchieved ?? false;
+                                                    const displayRealisasi = item.displayRealisasi || getDisplayRealisasi(item.realisasi);
                                                     return (
                                                         <tr key={item.id || idx} className="hover:bg-slate-50/80 transition-colors">
                                                             <td className="px-4 py-3 text-center font-semibold text-slate-400">{idx + 1}</td>
@@ -882,7 +1045,7 @@ function DashboardCardDetailModal({
                                                                 <span className="text-slate-500 line-clamp-1">{item.indikator_kinerja}</span>
                                                             </td>
                                                             <td className="px-4 py-3 text-center font-bold">{item.target ?? '-'} {item.satuan || ''}</td>
-                                                            <td className="px-4 py-3 text-center font-bold">{item.realisasi ?? '-'} {item.satuan || ''}</td>
+                                                            <td className="px-4 py-3 text-center font-bold">{displayRealisasi} {item.satuan || ''}</td>
                                                             <td className="px-4 py-3 text-center">
                                                                 <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${isAchieved ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
                                                                     {isAchieved ? 'Tercapai' : 'Belum Tercapai'}

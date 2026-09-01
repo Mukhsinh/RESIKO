@@ -40,7 +40,12 @@ interface Form {
 const defaultForm: Form = {
     unit_kerja_id: '', tahun: CURRENT_YEAR, perspektif: 'Keuangan',
     sasaran_strategis: '', kpi: '', bobot: 0,
-    target: '', realisasi: '', kriteria: [{ skor: '1', label: 'Kurang' }, { skor: '2', label: 'Cukup' }, { skor: '3', label: 'Baik' }, { skor: '4', label: 'Sangat Baik' }]
+    target: '', realisasi: '', kriteria: [
+        { skor: '4', label: 'Istimewa' },
+        { skor: '3', label: 'Baik' },
+        { skor: '2', label: 'Cukup' },
+        { skor: '1', label: 'Rendah' }
+    ]
 };
 
 const PERSPEKTIF_COLORS: Record<string, string> = {

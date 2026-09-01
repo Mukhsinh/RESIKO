@@ -7,7 +7,7 @@ import { useUserProfile } from '@/hooks/useUserProfile';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { PageHeader, ScoreCard } from '@/components/SharedUI';
-import { CheckCircle2, AlertTriangle, Activity, Clock, Plus, Download, FileText, X, Save, Loader2 } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Activity, Clock, Plus, Download, FileText, X, Save, Loader2, Search, RotateCcw } from 'lucide-react';
 import { exportToExcel, type ExcelColumn } from '@/lib/excelUtils';
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -75,6 +75,9 @@ export default function MonitoringRisikoPage() {
     const { profile, isManager, isAuditor, validUnitIds, isMatchUnit } = useUserProfile();
     const [data, setData] = useState<MonitoringData[]>([]);
     const [year, setYear] = useState(String(CURRENT_YEAR));
+    const [selectedUnitId, setSelectedUnitId] = useState('');
+    const [search, setSearch] = useState('');
+    const [searchQuery, setSearchQuery] = useState('');
     const [loading, setLoading] = useState(true);
     const [downloading, setDownloading] = useState(false);
 
@@ -83,6 +86,18 @@ export default function MonitoringRisikoPage() {
     const [form, setForm] = useState({ ...EMPTY_FORM });
     const [units, setUnits] = useState<WorkUnit[]>([]);
     const [risikoList, setRisikoList] = useState<RisikoItem[]>([]);
+
+    const handleSearchSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        setSearchQuery(search);
+    };
+
+    const handleResetFilters = () => {
+        setSearch('');
+        setSearchQuery('');
+        setSelectedUnitId('');
+        setYear(String(CURRENT_YEAR));
+    };
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -112,7 +127,7 @@ export default function MonitoringRisikoPage() {
 
     useEffect(() => {
         fetchData();
-        supabase.from('unit_kerja').select('id, nama_unit').then(({ data }: { data: any }) => setUnits((data ?? []) as WorkUnit[]));
+        supabase.from('unit_kerja').select('id, nama_unit').order('nama_unit', { ascending: true }).then(({ data }: { data: any }) => setUnits((data ?? []) as WorkUnit[]));
         supabase.from('risk_inputs').select('id, kode_risiko, nama_risiko, identifikasi_deskripsi, nama_unit_kerja_id, master_work_units(name)').then(({ data }: { data: any }) => setRisikoList((data ?? []) as RisikoItem[]));
     }, [fetchData]);
 
@@ -124,10 +139,31 @@ export default function MonitoringRisikoPage() {
         'Aktif': 'badge-red', 'Monitoring': 'badge-amber', 'Mitigasi': 'badge-blue', 'Selesai': 'badge-green',
     };
 
-    const aktif = data.filter(d => d.status === 'Aktif').length;
-    const monitoring = data.filter(d => d.status === 'Monitoring').length;
-    const mitigasi = data.filter(d => d.status === 'Mitigasi').length;
-    const selesai = data.filter(d => d.status === 'Selesai').length;
+    const filtered = React.useMemo(() => {
+        return data.filter(d => {
+            if (selectedUnitId) {
+                const uId = d.risk_inputs?.nama_unit_kerja_id;
+                if (uId && uId !== selectedUnitId) return false;
+            }
+            const q = (searchQuery || search).toLowerCase().trim();
+            if (q) {
+                const rName = (d.risk_inputs?.nama_risiko || d.risk_inputs?.identifikasi_deskripsi || '').toLowerCase();
+                const rCode = (d.risk_inputs?.kode_risiko || '').toLowerCase();
+                const mitigasi = (d.tindakan_mitigasi || '').toLowerCase();
+                const evaluasi = (d.evaluasi || '').toLowerCase();
+                const status = (d.status || '').toLowerCase();
+                const statusRisiko = (d.status_risiko || '').toLowerCase();
+                const match = rName.includes(q) || rCode.includes(q) || mitigasi.includes(q) || evaluasi.includes(q) || status.includes(q) || statusRisiko.includes(q);
+                if (!match) return false;
+            }
+            return true;
+        });
+    }, [data, selectedUnitId, search, searchQuery]);
+
+    const aktif = filtered.filter(d => d.status === 'Aktif').length;
+    const monitoring = filtered.filter(d => d.status === 'Monitoring').length;
+    const mitigasi = filtered.filter(d => d.status === 'Mitigasi').length;
+    const selesai = filtered.filter(d => d.status === 'Selesai').length;
 
     const filteredRisiko = (form.unit_kerja_id
         ? risikoList.filter(r => {
@@ -288,7 +324,7 @@ export default function MonitoringRisikoPage() {
             let finalY = 160;
             let rowIdx = 1;
 
-            const tableData = data.map(r => {
+            const tableData = filtered.map(r => {
                 const risikoName = r.risk_inputs?.identifikasi_deskripsi || r.risk_inputs?.nama_risiko || r.risk_inputs?.kode_risiko || '-';
                 const tgl = r.tanggal_monitoring ? new Date(r.tanggal_monitoring).toLocaleDateString('id-ID') : '-';
 
@@ -417,21 +453,71 @@ export default function MonitoringRisikoPage() {
                 subtitle="Pantau perkembangan status penanganan seluruh risiko yang diidentifikasi."
                 actions={
                     <div className="flex gap-2 items-center no-print">
-                        <select className="form-input w-28" value={year} onChange={e => setYear(e.target.value)}>
-                            {[CURRENT_YEAR + 1, CURRENT_YEAR, CURRENT_YEAR - 1].map(y => <option key={y} value={y}>{y}</option>)}
-                        </select>
-                        <button className="btn-secondary flex items-center gap-2" onClick={handleExportPDF} disabled={downloading}>
+                        <button className="btn-secondary flex items-center gap-2 cursor-pointer" onClick={handleExportPDF} disabled={downloading}>
                             {downloading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
                             <span>Laporan</span>
                         </button>
                         {!isAuditor && (
-                            <button className="btn-primary flex items-center gap-2" onClick={() => setShowModal(true)}>
+                            <button className="btn-primary flex items-center gap-2 cursor-pointer" onClick={() => setShowModal(true)}>
                                 <Plus size={15} /> Tambah Data
                             </button>
                         )}
                     </div>
                 }
             />
+
+            {/* Filter Bar */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs mb-6 flex flex-wrap items-center justify-between gap-4 no-print">
+                <div className="flex flex-wrap items-center gap-3">
+                    <form onSubmit={handleSearchSubmit} className="flex items-center gap-2">
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                            <input
+                                type="text"
+                                value={search}
+                                onChange={e => setSearch(e.target.value)}
+                                placeholder="Cari risiko / mitigasi..."
+                                className="pl-9 pr-4 h-10 bg-slate-50 border border-slate-200 rounded-xl text-xs w-52 sm:w-60 focus:outline-none focus:ring-2 focus:ring-[#137fec]/40 focus:border-transparent transition-all"
+                            />
+                        </div>
+                        <button type="submit" className="h-10 px-3.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer">
+                            <Search size={14} />
+                            <span>Cari</span>
+                        </button>
+                    </form>
+
+                    <select
+                        value={selectedUnitId}
+                        onChange={e => setSelectedUnitId(e.target.value)}
+                        className="h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#137fec]/40"
+                    >
+                        <option value="">Semua Unit Kerja</option>
+                        {units.map(u => <option key={u.id} value={u.id}>{u.nama_unit}</option>)}
+                    </select>
+
+                    <select
+                        value={year}
+                        onChange={e => setYear(e.target.value)}
+                        className="h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#137fec]/40"
+                    >
+                        <option value="">Semua Tahun</option>
+                        {[CURRENT_YEAR + 1, CURRENT_YEAR, CURRENT_YEAR - 1, CURRENT_YEAR - 2].map(y => (
+                            <option key={y} value={String(y)}>{y}</option>
+                        ))}
+                    </select>
+
+                    {(selectedUnitId || year !== String(CURRENT_YEAR) || search || searchQuery) && (
+                        <button
+                            type="button"
+                            onClick={handleResetFilters}
+                            className="h-10 px-3 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-xl text-xs font-medium transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                            <RotateCcw size={13} />
+                            <span>Reset</span>
+                        </button>
+                    )}
+                </div>
+            </div>
 
             <div className="grid grid-cols-2 xl:grid-cols-4 gap-5 mb-8 no-print">
                 <ScoreCard icon={<AlertTriangle size={22} className="text-rose-500" />} title="Aktif" value={aktif} colorClass="bg-rose-50 border-rose-100" />
@@ -451,11 +537,11 @@ export default function MonitoringRisikoPage() {
                     ) : (
                         <div className="space-y-3">
                             {statuses.map(s => (
-                                <StatusBar key={s} label={s} count={data.filter(d => d.status === s).length} total={data.length} color={statusColors[s]} />
+                                <StatusBar key={s} label={s} count={filtered.filter(d => d.status === s).length} total={filtered.length} color={statusColors[s]} />
                             ))}
                             <div className="pt-3 border-t border-slate-100 flex justify-between text-xs text-slate-500">
-                                <span>Total: {data.length} risiko</span>
-                                <span>Penyelesaian: {data.length ? `${Math.round(selesai * 100 / data.length)}%` : '0%'}</span>
+                                <span>Total: {filtered.length} risiko</span>
+                                <span>Penyelesaian: {filtered.length ? `${Math.round(selesai * 100 / filtered.length)}%` : '0%'}</span>
                             </div>
                         </div>
                     )}
@@ -470,7 +556,7 @@ export default function MonitoringRisikoPage() {
                         </div>
                     ) : (
                         <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-                            {data.filter(d => d.status !== 'Selesai').map(r => (
+                            {filtered.filter(d => d.status !== 'Selesai').map(r => (
                                 <div key={r.id} className="flex items-start gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
                                     <span className={`${statusColors[r.status || 'Aktif'] ?? 'bg-slate-300'} w-2 h-2 rounded-full mt-1.5 shrink-0`} />
                                     <div className="flex-1 min-w-0">
@@ -483,8 +569,8 @@ export default function MonitoringRisikoPage() {
                                     </div>
                                 </div>
                             ))}
-                            {data.filter(d => d.status !== 'Selesai').length === 0 && (
-                                <p className="text-slate-400 text-sm text-center py-6">Semua risiko telah ditangani 🎉</p>
+                            {filtered.filter(d => d.status !== 'Selesai').length === 0 && (
+                                <p className="text-slate-400 text-sm text-center py-6">Tidak ada risiko aktif yang sesuai kriteria filter ✨</p>
                             )}
                         </div>
                     )}

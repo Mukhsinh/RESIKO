@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useAppSettings } from '@/hooks/useAppSettings';
 
 interface ScoreCardProps {
     icon: React.ReactNode;
@@ -57,13 +58,13 @@ interface FilterBarProps {
     extraFilters?: React.ReactNode;
 }
 
-const currentYear = new Date().getFullYear();
-const defaultYears = Array.from({ length: 12 }, (_, i) => currentYear - 2 + i); // e.g. 2024 to 2035 if currentYear is 2026
-
 export function FilterBar({
     searchValue, onSearchChange, searchPlaceholder,
-    yearValue, onYearChange, years = defaultYears, extraFilters
+    yearValue, onYearChange, years, extraFilters
 }: FilterBarProps) {
+    const { yearsList } = useAppSettings();
+    const effectiveYears = years || yearsList;
+
     return (
         <div className="flex flex-wrap items-center gap-2.5">
             {/* Search */}
@@ -88,7 +89,7 @@ export function FilterBar({
                     className="filter-select w-28"
                 >
                     <option value="">Semua Tahun</option>
-                    {years.map(y => <option key={y} value={String(y)}>{y}</option>)}
+                    {effectiveYears.map(y => <option key={y} value={String(y)}>{y}</option>)}
                 </select>
             )}
 

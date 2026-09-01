@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 
 export interface AppSettings {
@@ -19,6 +19,8 @@ export interface AppSettings {
     nip_kepala?: string;
     jabatan_penandatangan_kiri?: string;
     nama_penandatangan_kiri?: string;
+    tahun_mulai?: number;
+    tahun_selesai?: number;
 }
 
 const CACHE_KEY = 'app_branding_settings';
@@ -40,6 +42,8 @@ export function useAppSettings(enabled: boolean = true) {
         nip_kepala: '',
         jabatan_penandatangan_kiri: 'Penanggungjawab Unit',
         nama_penandatangan_kiri: 'Penanggungjawab Unit Kerja',
+        tahun_mulai: 2026,
+        tahun_selesai: 2029,
     });
     const [loading, setLoading] = useState(true);
 
@@ -85,6 +89,8 @@ export function useAppSettings(enabled: boolean = true) {
                         nip_kepala: data.nip_kepala || '',
                         jabatan_penandatangan_kiri: data.jabatan_penandatangan_kiri || 'Penanggungjawab Unit',
                         nama_penandatangan_kiri: data.nama_penandatangan_kiri || 'Penanggungjawab Unit Kerja',
+                        tahun_mulai: data.tahun_mulai ? Number(data.tahun_mulai) : 2026,
+                        tahun_selesai: data.tahun_selesai ? Number(data.tahun_selesai) : 2029,
                     };
                     setSettings(newSettings);
                     localStorage.setItem(CACHE_KEY, JSON.stringify(newSettings));
@@ -97,7 +103,20 @@ export function useAppSettings(enabled: boolean = true) {
         };
 
         fetchSettings();
-    }, []);
+    }, [enabled]);
 
-    return { settings, loading };
+    const yearsList = useMemo(() => {
+        const startYr = settings.tahun_mulai || 2026;
+        const endYr = settings.tahun_selesai || 2029;
+        const list: number[] = [];
+        for (let y = startYr; y <= endYr; y++) {
+            list.push(y);
+        }
+        if (list.length === 0) {
+            list.push(2026, 2027, 2028, 2029);
+        }
+        return list;
+    }, [settings.tahun_mulai, settings.tahun_selesai]);
+
+    return { settings, loading, yearsList };
 }

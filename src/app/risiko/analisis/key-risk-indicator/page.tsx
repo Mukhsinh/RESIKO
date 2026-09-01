@@ -12,7 +12,7 @@ import {
     Plus, FileText, AlertTriangle, ShieldAlert, CheckCircle2,
     Eye, Edit, Trash2, X, Save, Loader2, TrendingDown, TrendingUp
 } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend, ReferenceLine } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from 'recharts';
 
 /* ─── Types ─────────────────────────────────────────────────────── */
 interface KRIRow {
@@ -46,23 +46,29 @@ interface RiskInputOption {
 }
 
 /* ─── Helpers ─────────────────────────────────────────────────── */
-function getStatusColor(row: KRIRow) {
-    const aktual = row.nilai_aktual ?? 0;
-    const atas = row.batas_atas ?? Infinity;
-    const bawah = row.batas_bawah ?? 0;
-    if (aktual > atas) return 'badge-red';
-    if (aktual > atas * 0.8) return 'badge-amber';
-    if (aktual < bawah) return 'badge-amber';
-    return 'badge-green';
-}
-function getStatusLabel(row: KRIRow) {
-    const aktual = row.nilai_aktual ?? 0;
-    const atas = row.batas_atas ?? Infinity;
-    const bawah = row.batas_bawah ?? 0;
-    if (aktual > atas) return 'Over Limit';
-    if (aktual > atas * 0.8) return 'Mendekati Batas';
-    if (aktual < bawah) return 'Di Bawah Batas';
+function getKRIStatus(row: KRIRow): 'Over Limit' | 'Mendekati Batas' | 'Di Bawah Batas' | 'Normal' {
+    const aktual = Number(row.nilai_aktual ?? 0);
+    const atas = Number(row.batas_atas ?? 0);
+    const bawah = Number(row.batas_bawah ?? 0);
+
+    if (atas > 0 && aktual > atas) return 'Over Limit';
+    if (atas > 0 && aktual > atas * 0.8) return 'Mendekati Batas';
+    if (bawah > 0 && aktual < bawah) return 'Di Bawah Batas';
     return 'Normal';
+}
+
+function getStatusColor(statusOrRow: string | KRIRow) {
+    const status = typeof statusOrRow === 'string' ? statusOrRow : getKRIStatus(statusOrRow);
+    switch (status) {
+        case 'Over Limit': return 'badge-red';
+        case 'Mendekati Batas': return 'badge-amber';
+        case 'Di Bawah Batas': return 'badge-amber';
+        case 'Normal': default: return 'badge-green';
+    }
+}
+
+function getStatusLabel(row: KRIRow) {
+    return getKRIStatus(row);
 }
 
 /* ─── Empty Form ─────────────────────────────────────────────────── */
@@ -114,7 +120,6 @@ function KRIModal({ row, onClose, onSave, units, riskInputs, existingRows, savin
         } else if (!id) {
             f('kode_risiko', '');
         }
-        // User rule: Nama KRI and Deskripsi Indikator are entered manually, not auto-populated from risk identification
     };
 
     const filteredRiskInputs = (form.unit_kerja_id
@@ -289,6 +294,7 @@ function ViewModal({ row, onClose }: { row: KRIRow; onClose: () => void }) {
     const atas = row.batas_atas ?? 0;
     const bawah = row.batas_bawah ?? 0;
     const pct = atas > 0 ? Math.min(100, Math.round((aktual / atas) * 100)) : 0;
+    const st = getKRIStatus(row);
 
     return (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 backdrop-blur-sm overflow-y-auto p-4">
@@ -311,10 +317,10 @@ function ViewModal({ row, onClose }: { row: KRIRow; onClose: () => void }) {
                             <div className="text-xs text-slate-500">Batas Bawah</div>
                             <div className="text-2xl font-bold text-slate-600 mt-1">{bawah}<span className="text-xs font-normal ml-1">{row.satuan}</span></div>
                         </div>
-                        <div className={`border rounded-xl p-3 ${aktual > atas ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'}`}>
+                        <div className={`border rounded-xl p-3 ${st === 'Over Limit' ? 'bg-red-50 border-red-200' : st === 'Mendekati Batas' || st === 'Di Bawah Batas' ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
                             <div className="text-xs text-slate-500">Nilai Aktual</div>
-                            <div className={`text-2xl font-extrabold mt-1 ${aktual > atas ? 'text-rose-600' : 'text-emerald-600'}`}>{aktual}<span className="text-xs font-normal ml-1">{row.satuan}</span></div>
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${aktual > atas ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>{getStatusLabel(row)}</span>
+                            <div className={`text-2xl font-extrabold mt-1 ${st === 'Over Limit' ? 'text-rose-600' : st === 'Mendekati Batas' || st === 'Di Bawah Batas' ? 'text-amber-600' : 'text-emerald-600'}`}>{aktual}<span className="text-xs font-normal ml-1">{row.satuan}</span></div>
+                            <span className={getStatusColor(st)}>{st}</span>
                         </div>
                         <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
                             <div className="text-xs text-slate-500">Batas Atas</div>
@@ -329,14 +335,14 @@ function ViewModal({ row, onClose }: { row: KRIRow; onClose: () => void }) {
                                 <span className="font-semibold">{pct}%</span>
                             </div>
                             <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
-                                <div className={`h-full rounded-full transition-all ${aktual > atas ? 'bg-rose-500' : aktual > atas * 0.8 ? 'bg-amber-400' : 'bg-emerald-500'}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+                                <div className={`h-full rounded-full transition-all ${st === 'Over Limit' ? 'bg-rose-500' : st === 'Mendekati Batas' || st === 'Di Bawah Batas' ? 'bg-amber-400' : 'bg-emerald-500'}`} style={{ width: `${Math.min(pct, 100)}%` }} />
                             </div>
                         </div>
                     )}
 
                     <div className="grid grid-cols-2 gap-3 text-xs">
                         <div><span className="text-slate-400">Frekuensi Pemantauan:</span> <span className="font-medium">{row.frekuensi ?? '-'}</span></div>
-                        <div><span className="text-slate-400">Status:</span> <span className={`font-medium ${aktual > atas ? 'text-rose-600' : 'text-emerald-600'}`}>{getStatusLabel(row)}</span></div>
+                        <div><span className="text-slate-400">Status:</span> <span className={`font-medium ${st === 'Over Limit' ? 'text-rose-600' : st === 'Mendekati Batas' ? 'text-amber-600' : 'text-emerald-600'}`}>{st}</span></div>
                     </div>
                 </div>
                 <div className="flex justify-end px-6 pb-6">
@@ -347,10 +353,114 @@ function ViewModal({ row, onClose }: { row: KRIRow; onClose: () => void }) {
     );
 }
 
+/* ─── Card Detail Modal ───────────────────────────────────────────── */
+function KRICardDetailModal({
+    title,
+    subtitle,
+    badgeColor,
+    rows,
+    onClose,
+    onViewDetail
+}: {
+    title: string;
+    subtitle: string;
+    badgeColor: string;
+    rows: KRIRow[];
+    onClose: () => void;
+    onViewDetail: (row: KRIRow) => void;
+}) {
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm overflow-y-auto p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col my-auto">
+                <div className="flex justify-between items-center p-6 border-b border-slate-100 shrink-0">
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <h2 className="font-bold text-slate-800 text-lg">{title}</h2>
+                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${badgeColor}`}>
+                                {rows.length} Data KRI
+                            </span>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-1">{subtitle}</p>
+                    </div>
+                    <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg text-slate-400">
+                        <X size={18} />
+                    </button>
+                </div>
+
+                <div className="p-6 overflow-y-auto flex-1">
+                    {rows.length === 0 ? (
+                        <div className="text-center py-12 text-slate-400 text-sm">
+                            Tidak ada data KRI dalam kategori ini.
+                        </div>
+                    ) : (
+                        <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                            <table className="w-full text-xs text-left">
+                                <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                                    <tr>
+                                        <th className="py-3 px-4">No</th>
+                                        <th className="py-3 px-4">Unit Kerja</th>
+                                        <th className="py-3 px-4">Kode & Nama KRI</th>
+                                        <th className="py-3 px-4 text-center">Batas (Bawah – Atas)</th>
+                                        <th className="py-3 px-4 text-center">Nilai Aktual</th>
+                                        <th className="py-3 px-4 text-center">Status</th>
+                                        <th className="py-3 px-4 text-center">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {rows.map((r, idx) => {
+                                        const st = getKRIStatus(r);
+                                        return (
+                                            <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
+                                                <td className="py-3 px-4 text-slate-400 font-medium">{idx + 1}</td>
+                                                <td className="py-3 px-4 font-medium text-slate-700">{r.unit_kerja?.nama_unit ?? '-'}</td>
+                                                <td className="py-3 px-4">
+                                                    {r.kode_risiko && <span className="font-mono text-[11px] text-slate-400 block">{r.kode_risiko}</span>}
+                                                    <span className="font-semibold text-slate-800">{r.nama_kri}</span>
+                                                </td>
+                                                <td className="py-3 px-4 text-center text-slate-600 font-mono">
+                                                    {r.batas_bawah ?? 0} – {r.batas_atas ?? 0} {r.satuan ?? ''}
+                                                </td>
+                                                <td className="py-3 px-4 text-center font-bold">
+                                                    <span className={st === 'Over Limit' ? 'text-rose-600' : st === 'Mendekati Batas' || st === 'Di Bawah Batas' ? 'text-amber-600' : 'text-emerald-600'}>
+                                                        {r.nilai_aktual ?? 0} {r.satuan ?? ''}
+                                                    </span>
+                                                </td>
+                                                <td className="py-3 px-4 text-center">
+                                                    <span className={getStatusColor(st)}>{st}</span>
+                                                </td>
+                                                <td className="py-3 px-4 text-center">
+                                                    <button
+                                                        onClick={() => {
+                                                            onClose();
+                                                            onViewDetail(r);
+                                                        }}
+                                                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg font-medium text-xs flex items-center gap-1 mx-auto"
+                                                        title="Lihat Detail KRI"
+                                                    >
+                                                        <Eye size={14} /> Detail
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex justify-end px-6 py-4 border-t border-slate-100 shrink-0">
+                    <button onClick={onClose} className="btn-secondary">Tutup</button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 /* ─── Main Page ──────────────────────────────────────────────────── */
 export default function KeyRiskIndicatorPage() {
     const { settings } = useAppSettings();
-    const { profile, isManager, isAuditor, validUnitIds, isMatchUnit } = useUserProfile();
+    const { profile, isManager, isAuditor, isMatchUnit } = useUserProfile();
     const [search, setSearch] = useState('');
     const [year, setYear] = useState(String(new Date().getFullYear()));
     const [unitFilter, setUnitFilter] = useState('');
@@ -362,6 +472,12 @@ export default function KeyRiskIndicatorPage() {
     const [showModal, setShowModal] = useState(false);
     const [viewRow, setViewRow] = useState<KRIRow | null>(null);
     const [editRow, setEditRow] = useState<Partial<typeof EMPTY_FORM> & { _id?: string } | null>(null);
+    const [cardDetailModal, setCardDetailModal] = useState<{
+        title: string;
+        subtitle: string;
+        badgeColor: string;
+        rows: KRIRow[];
+    } | null>(null);
 
     // Auto-lock unit filter for unit managers
     useEffect(() => {
@@ -389,8 +505,6 @@ export default function KeyRiskIndicatorPage() {
 
             if (error) {
                 console.error('Error fetching fallback KRI:', error);
-
-                // Fallback attempt without year filter in case of severe errors
                 const { data: fallbackData } = await supabase
                     .from('key_risk_indicators')
                     .select('*, unit_kerja(id, nama_unit), risk_inputs(id, kode_risiko, nama_risiko)')
@@ -411,7 +525,7 @@ export default function KeyRiskIndicatorPage() {
     useEffect(() => { fetchData(); }, [fetchData]);
 
     useEffect(() => {
-        supabase.from('unit_kerja').select('id, nama_unit').then(({ data }: { data: any }) =>
+        supabase.from('unit_kerja').select('id, nama_unit').order('nama_unit', { ascending: true }).then(({ data }: { data: any }) =>
             setUnits((data ?? []).map((u: any) => ({ id: u.id, name: u.nama_unit }))));
         supabase.from('risk_inputs').select('id, kode_risiko, nama_risiko, identifikasi_deskripsi, identifikasi_indikator, nama_unit_kerja_id, master_work_units(name)').then(({ data }: { data: any }) =>
             setRiskInputs((data ?? []) as RiskInputOption[]));
@@ -424,23 +538,32 @@ export default function KeyRiskIndicatorPage() {
         return matchSearch && matchUnit;
     });
 
+    const overLimitRows = filtered.filter(r => getKRIStatus(r) === 'Over Limit');
+    const mendekatiRows = filtered.filter(r => getKRIStatus(r) === 'Mendekati Batas' || getKRIStatus(r) === 'Di Bawah Batas');
+    const normalRows = filtered.filter(r => getKRIStatus(r) === 'Normal');
+
     const stats = {
         total: filtered.length,
-        overLimit: filtered.filter(r => (r.nilai_aktual ?? 0) > (r.batas_atas ?? Infinity)).length,
-        mendekati: filtered.filter(r => {
-            const a = r.nilai_aktual ?? 0; const b = r.batas_atas ?? Infinity;
-            return a <= b && a > b * 0.8;
-        }).length,
-        normal: filtered.filter(r => (r.nilai_aktual ?? 0) <= (r.batas_atas ?? Infinity) * 0.8).length,
+        overLimit: overLimitRows.length,
+        mendekati: mendekatiRows.length,
+        normal: normalRows.length,
     };
 
-    // Trend chart shows avg aktual per unit
+    // Trend chart shows avg aktual, batas atas, and batas bawah per unit
     const trendData = units.map(u => {
         const unitRows = filtered.filter(r => r.unit_kerja_id === u.id);
-        const avg = unitRows.length ? unitRows.reduce((s, r) => s + (r.nilai_aktual ?? 0), 0) / unitRows.length : 0;
-        const avgBatas = unitRows.length ? unitRows.reduce((s, r) => s + (r.batas_atas ?? 0), 0) / unitRows.length : 0;
-        return { name: u.name.substring(0, 12), 'Nilai Aktual': +avg.toFixed(1), 'Batas Atas': +avgBatas.toFixed(1) };
-    }).filter(u => u['Nilai Aktual'] > 0 || u['Batas Atas'] > 0);
+        const avgAktual = unitRows.length ? unitRows.reduce((s, r) => s + (r.nilai_aktual ?? 0), 0) / unitRows.length : 0;
+        const avgBatasAtas = unitRows.length ? unitRows.reduce((s, r) => s + (r.batas_atas ?? 0), 0) / unitRows.length : 0;
+        const avgBatasBawah = unitRows.length ? unitRows.reduce((s, r) => s + (r.batas_bawah ?? 0), 0) / unitRows.length : 0;
+        return {
+            id: u.id,
+            name: u.name,
+            'Nilai Aktual': +avgAktual.toFixed(1),
+            'Batas Atas': +avgBatasAtas.toFixed(1),
+            'Batas Bawah': +avgBatasBawah.toFixed(1),
+            count: unitRows.length
+        };
+    }).filter(u => u.count > 0 || u['Nilai Aktual'] > 0 || u['Batas Atas'] > 0 || u['Batas Bawah'] > 0);
 
     const handleSave = async (form: typeof EMPTY_FORM) => {
         setSaving(true);
@@ -559,9 +682,8 @@ export default function KeyRiskIndicatorPage() {
         {
             key: 'nilai_aktual', label: 'Nilai Aktual', className: 'text-center font-bold',
             render: r => {
-                const aktual = r.nilai_aktual ?? 0;
-                const atas = r.batas_atas ?? Infinity;
-                return <span className={aktual > atas ? 'text-rose-600' : 'text-emerald-600'}>{aktual} {r.satuan ?? ''}</span>;
+                const st = getKRIStatus(r);
+                return <span className={st === 'Over Limit' ? 'text-rose-600' : st === 'Mendekati Batas' || st === 'Di Bawah Batas' ? 'text-amber-600' : 'text-emerald-600'}>{r.nilai_aktual ?? 0} {r.satuan ?? ''}</span>;
             }
         },
         { key: 'frekuensi', label: 'Frekuensi', className: 'text-center text-xs', render: r => r.frekuensi ?? 'Bulanan' },
@@ -598,34 +720,137 @@ export default function KeyRiskIndicatorPage() {
                 />
             )}
             {viewRow && <ViewModal row={viewRow} onClose={() => setViewRow(null)} />}
+            {cardDetailModal && (
+                <KRICardDetailModal
+                    title={cardDetailModal.title}
+                    subtitle={cardDetailModal.subtitle}
+                    badgeColor={cardDetailModal.badgeColor}
+                    rows={cardDetailModal.rows}
+                    onClose={() => setCardDetailModal(null)}
+                    onViewDetail={(r) => setViewRow(r)}
+                />
+            )}
 
             <PageHeader title="Key Risk Indicator (KRI)" subtitle="Pemantauan indikator risiko utama berdasarkan ambang batas." />
 
             {/* Score Cards */}
             <div className="grid grid-cols-2 xl:grid-cols-4 gap-5 mb-8">
-                <ScoreCard icon={<ShieldAlert size={22} className="text-slate-500" />} title="Total KRI Aktif" value={stats.total} colorClass="bg-slate-50 border-slate-100" />
-                <ScoreCard icon={<AlertTriangle size={22} className="text-rose-500" />} title="Over Limit" value={stats.overLimit} subtitle="Melewati batas atas" colorClass="bg-rose-50 border-rose-100" />
-                <ScoreCard icon={<AlertTriangle size={22} className="text-amber-500" />} title="Mendekati Batas" value={stats.mendekati} subtitle="80–100% batas atas" colorClass="bg-amber-50 border-amber-100" />
-                <ScoreCard icon={<CheckCircle2 size={22} className="text-emerald-500" />} title="Normal" value={stats.normal} colorClass="bg-emerald-50 border-emerald-100" />
+                <ScoreCard
+                    icon={<ShieldAlert size={22} className="text-slate-500" />}
+                    title="Total KRI Aktif"
+                    value={stats.total}
+                    colorClass="bg-slate-50 border-slate-100"
+                    action={
+                        <button
+                            onClick={() => setCardDetailModal({
+                                title: 'Detail Total KRI Aktif',
+                                subtitle: 'Seluruh indikator Key Risk Indicator yang sedang dipantau',
+                                badgeColor: 'bg-slate-100 text-slate-700',
+                                rows: filtered
+                            })}
+                            className="p-1.5 hover:bg-slate-200/60 rounded-lg text-slate-400 hover:text-slate-700 transition-colors"
+                            title="Lihat Detail Total KRI"
+                        >
+                            <Eye size={16} />
+                        </button>
+                    }
+                />
+                <ScoreCard
+                    icon={<AlertTriangle size={22} className="text-rose-500" />}
+                    title="Over Limit"
+                    value={stats.overLimit}
+                    subtitle="Melewati batas atas toleransi"
+                    colorClass="bg-rose-50 border-rose-100"
+                    action={
+                        <button
+                            onClick={() => setCardDetailModal({
+                                title: 'Detail KRI - Over Limit',
+                                subtitle: 'Indikator KRI yang nilai aktualnya melebihi batas atas toleransi',
+                                badgeColor: 'bg-rose-100 text-rose-700',
+                                rows: overLimitRows
+                            })}
+                            className="p-1.5 hover:bg-rose-200/60 rounded-lg text-rose-500 hover:text-rose-700 transition-colors"
+                            title="Lihat Detail Over Limit"
+                        >
+                            <Eye size={16} />
+                        </button>
+                    }
+                />
+                <ScoreCard
+                    icon={<AlertTriangle size={22} className="text-amber-500" />}
+                    title="Mendekati Batas"
+                    value={stats.mendekati}
+                    subtitle="80–100% batas atas / di bawah batas bawah"
+                    colorClass="bg-amber-50 border-amber-100"
+                    action={
+                        <button
+                            onClick={() => setCardDetailModal({
+                                title: 'Detail KRI - Mendekati Batas',
+                                subtitle: 'Indikator KRI yang mendekati batas atas atau di bawah batas bawah',
+                                badgeColor: 'bg-amber-100 text-amber-700',
+                                rows: mendekatiRows
+                            })}
+                            className="p-1.5 hover:bg-amber-200/60 rounded-lg text-amber-500 hover:text-amber-700 transition-colors"
+                            title="Lihat Detail Mendekati Batas"
+                        >
+                            <Eye size={16} />
+                        </button>
+                    }
+                />
+                <ScoreCard
+                    icon={<CheckCircle2 size={22} className="text-emerald-500" />}
+                    title="Normal"
+                    value={stats.normal}
+                    colorClass="bg-emerald-50 border-emerald-100"
+                    action={
+                        <button
+                            onClick={() => setCardDetailModal({
+                                title: 'Detail KRI - Normal',
+                                subtitle: 'Indikator KRI yang berada dalam kisaran aman dan normal',
+                                badgeColor: 'bg-emerald-100 text-emerald-700',
+                                rows: normalRows
+                            })}
+                            className="p-1.5 hover:bg-emerald-200/60 rounded-lg text-emerald-500 hover:text-emerald-700 transition-colors"
+                            title="Lihat Detail Normal"
+                        >
+                            <Eye size={16} />
+                        </button>
+                    }
+                />
             </div>
 
             {/* Trend Chart */}
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 mb-8">
-                <h3 className="text-sm font-semibold text-slate-800 mb-6 flex items-center">
-                    <span className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center mr-3">📈</span>
-                    Perbandingan Nilai Aktual vs Batas Atas per Unit Kerja
+                <h3 className="text-sm font-semibold text-slate-800 mb-6 flex items-center justify-between">
+                    <div className="flex items-center">
+                        <span className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center mr-3">📈</span>
+                        Perbandingan Nilai Aktual vs Batas (Batas Bawah & Batas Atas) per Unit Kerja
+                    </div>
+                    <span className="text-xs text-slate-400 font-normal">
+                        Rata-rata per unit kerja
+                    </span>
                 </h3>
-                <div className="h-72 w-full">
+                <div className="h-[340px] w-full">
                     {trendData.length > 0 ? (
                         <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                            <LineChart data={trendData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
+                            <LineChart data={trendData} margin={{ top: 20, right: 30, left: 10, bottom: 85 }}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} dy={10} />
+                                <XAxis
+                                    dataKey="name"
+                                    axisLine={false}
+                                    tickLine={false}
+                                    tick={{ fontSize: 11, fill: '#475569' }}
+                                    angle={-25}
+                                    textAnchor="end"
+                                    interval={0}
+                                    height={75}
+                                />
                                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} />
                                 <RechartsTooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0/0.1)' }} />
-                                <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                                <Legend wrapperStyle={{ paddingTop: '10px' }} />
                                 <Line type="monotone" dataKey="Nilai Aktual" stroke="#4F46E5" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
-                                <Line type="monotone" dataKey="Batas Atas" stroke="#EF4444" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+                                <Line type="monotone" dataKey="Batas Atas" stroke="#EF4444" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3 }} />
+                                <Line type="monotone" dataKey="Batas Bawah" stroke="#10B981" strokeWidth={2} strokeDasharray="3 3" dot={{ r: 3 }} />
                             </LineChart>
                         </ResponsiveContainer>
                     ) : (

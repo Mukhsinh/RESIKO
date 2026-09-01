@@ -84,7 +84,7 @@ export default function MasterPenggunaPage() {
         fetchData();
 
         // Fetch unit_kerja for dropdown
-        supabase.from('unit_kerja').select('id, nama_unit').then(({ data: unitsData, error }: { data: any; error: any }) => {
+        supabase.from('unit_kerja').select('id, nama_unit').order('nama_unit', { ascending: true }).then(({ data: unitsData, error }: { data: any; error: any }) => {
             if (error) {
                 console.error('Error fetching unit_kerja:', error);
             } else {

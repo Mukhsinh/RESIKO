@@ -7,7 +7,7 @@ import { useUserProfile } from '@/hooks/useUserProfile';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { PageHeader, ScoreCard } from '@/components/SharedUI';
-import { Activity, AlertTriangle, CheckCircle2, Plus, ShieldAlert, TrendingDown, X, Save, Loader2, Bell, Download } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, Plus, ShieldAlert, TrendingDown, X, Save, Loader2, Bell, Download, ClipboardCheck, Search, RotateCcw, Filter } from 'lucide-react';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -82,17 +82,41 @@ function PriorityBar({ score, max = 25 }: { score: number; max?: number }) {
 }
 
 /* ─── Evaluasi Modal ─── */
-function EvaluasiModal({ onClose, onSave, units, kriList, risikoList, saving }: {
+function EvaluasiModal({ onClose, onSave, units, kriList, risikoList, saving, initialData }: {
     onClose: () => void;
     onSave: (data: typeof EMPTY_FORM, capaian: number) => void;
     units: WorkUnit[];
     kriList: KRIItem[];
     risikoList: RisikoLinked[];
     saving: boolean;
+    initialData?: Partial<typeof EMPTY_FORM>;
 }) {
-    const [form, setForm] = useState({ ...EMPTY_FORM });
-    const [selectedKRI, setSelectedKRI] = useState<KRIItem | null>(null);
-    const [filteredRisiko, setFilteredRisiko] = useState<RisikoLinked[]>([]);
+    const [form, setForm] = useState(() => ({
+        ...EMPTY_FORM,
+        ...initialData,
+    }));
+
+    const [selectedKRI, setSelectedKRI] = useState<KRIItem | null>(() => {
+        if (initialData?.kri_id) {
+            return kriList.find(k => k.id === initialData.kri_id) ?? null;
+        }
+        return null;
+    });
+
+    const [filteredRisiko, setFilteredRisiko] = useState<RisikoLinked[]>(() => {
+        const unitId = initialData?.unit_kerja_id;
+        if (unitId) {
+            return risikoList.filter(r => !r.nama_unit_kerja_id || r.nama_unit_kerja_id === unitId);
+        }
+        return risikoList;
+    });
+
+    useEffect(() => {
+        if (initialData?.kri_id && !selectedKRI) {
+            const kri = kriList.find(k => k.id === initialData.kri_id);
+            if (kri) setSelectedKRI(kri);
+        }
+    }, [initialData, kriList, selectedKRI]);
 
     const f = (k: keyof typeof form, v: string | number) => setForm(prev => ({ ...prev, [k]: v }));
 
@@ -111,6 +135,10 @@ function EvaluasiModal({ onClose, onSave, units, kriList, risikoList, saving }: 
         if (kri) {
             f('target_nilai', kri.batas_atas ?? 0);
             f('nilai_aktual', kri.nilai_aktual ?? 0);
+            if (kri.unit_kerja_id && !form.unit_kerja_id) {
+                f('unit_kerja_id', kri.unit_kerja_id);
+                setFilteredRisiko(risikoList.filter(r => !r.nama_unit_kerja_id || r.nama_unit_kerja_id === kri.unit_kerja_id));
+            }
         }
     };
 
@@ -256,20 +284,96 @@ function EvaluasiModal({ onClose, onSave, units, kriList, risikoList, saving }: 
     );
 }
 
+interface AlertKRIItem {
+    id: string;
+    unit_kerja_id?: string;
+    unit: string;
+    kri: string;
+    aktual: number;
+    batas: number;
+    satuan?: string;
+}
+
 /* ─── Main Page ─── */
 export default function EvaluasiRisikoPage() {
     const { settings } = useAppSettings();
     const { profile, isManager, isAuditor, validUnitIds, isMatchUnit } = useUserProfile();
     const [data, setData] = useState<EvaluasiRow[]>([]);
     const [year, setYear] = useState(String(CURRENT_YEAR));
+    const [selectedUnitId, setSelectedUnitId] = useState('');
+    const [search, setSearch] = useState('');
+    const [searchQuery, setSearchQuery] = useState('');
     const [loading, setLoading] = useState(true);
     const [downloading, setDownloading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [showModal, setShowModal] = useState(false);
+    const [modalInitialData, setModalInitialData] = useState<Partial<typeof EMPTY_FORM> | undefined>(undefined);
     const [units, setUnits] = useState<WorkUnit[]>([]);
     const [kriList, setKriList] = useState<KRIItem[]>([]);
     const [risikoList, setRisikoList] = useState<RisikoLinked[]>([]);
-    const [alerts, setAlerts] = useState<{ unit: string; kri: string; aktual: number; batas: number }[]>([]);
+    const [alerts, setAlerts] = useState<AlertKRIItem[]>([]);
+
+    const handleSearchSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        setSearchQuery(search);
+    };
+
+    const handleResetFilters = () => {
+        setSearch('');
+        setSearchQuery('');
+        setSelectedUnitId('');
+        setYear(String(CURRENT_YEAR));
+    };
+
+    const filteredData = React.useMemo(() => {
+        return data.filter(r => {
+            if (selectedUnitId && r.unit_kerja_id !== selectedUnitId && (r.unit_kerja as any)?.id !== selectedUnitId) {
+                return false;
+            }
+            if (searchQuery.trim()) {
+                const q = searchQuery.toLowerCase().trim();
+                const unitName = (r.unit_kerja?.nama_unit ?? '').toLowerCase();
+                const kriName = (r.key_risk_indicators?.nama_kri ?? '').toLowerCase();
+                const status = (r.status ?? '').toLowerCase();
+                const catatan = (r.catatan ?? '').toLowerCase();
+                const rekomendasi = (r.rekomendasi ?? '').toLowerCase();
+                const match = unitName.includes(q) || kriName.includes(q) || status.includes(q) || catatan.includes(q) || rekomendasi.includes(q);
+                if (!match) return false;
+            }
+            return true;
+        });
+    }, [data, selectedUnitId, searchQuery]);
+
+    const filteredAlerts = React.useMemo(() => {
+        return alerts.filter(a => {
+            if (selectedUnitId && a.unit_kerja_id !== selectedUnitId) return false;
+            if (searchQuery.trim()) {
+                const q = searchQuery.toLowerCase().trim();
+                const match = a.kri.toLowerCase().includes(q) || a.unit.toLowerCase().includes(q);
+                if (!match) return false;
+            }
+            return true;
+        });
+    }, [alerts, selectedUnitId, searchQuery]);
+
+    const handleEvaluateKRI = (alertItem: AlertKRIItem) => {
+        setModalInitialData({
+            unit_kerja_id: alertItem.unit_kerja_id || '',
+            kri_id: alertItem.id,
+            nilai_aktual: alertItem.aktual,
+            target_nilai: alertItem.batas,
+            tanggal_evaluasi: new Date().toISOString().split('T')[0],
+            catatan: '',
+            rekomendasi: '',
+            status: 'Melebihi Batas',
+        });
+        setShowModal(true);
+    };
+
+    const handleOpenNewModal = () => {
+        setModalInitialData(undefined);
+        setShowModal(true);
+    };
 
     const handleExportPDF = async () => {
         setDownloading(true);
@@ -372,7 +476,7 @@ export default function EvaluasiRisikoPage() {
             let finalY = 160;
             let rowIdx = 1;
 
-            const tableData = data.map(r => {
+            const tableData = filteredData.map(r => {
                 const unit_name = r.unit_kerja?.nama_unit ?? '-';
                 const kri_name = r.key_risk_indicators?.nama_kri ?? '-';
                 const tgl = r.tanggal_evaluasi ? new Date(r.tanggal_evaluasi).toLocaleDateString('id-ID') : '-';
@@ -483,15 +587,17 @@ export default function EvaluasiRisikoPage() {
 
     const fetchData = useCallback(async () => {
         setLoading(true);
-        const yearStart = `${year}-01-01`;
-        const yearEnd = `${year}-12-31`;
-
         let evalQuery = supabase
             .from('evaluasi_risiko')
-            .select('*, unit_kerja(id, nama_unit), risk_inputs(id, nama_risiko, kode_risiko), key_risk_indicators(id, nama_kri, nilai_aktual, batas_atas, satuan)')
-            .gte('tanggal_evaluasi', yearStart)
-            .lte('tanggal_evaluasi', yearEnd)
-            .order('tanggal_evaluasi', { ascending: false });
+            .select('*, unit_kerja(id, nama_unit), risk_inputs(id, nama_risiko, kode_risiko), key_risk_indicators(id, nama_kri, nilai_aktual, batas_atas, satuan)');
+
+        if (year) {
+            const yearStart = `${year}-01-01`;
+            const yearEnd = `${year}-12-31`;
+            evalQuery = evalQuery.gte('tanggal_evaluasi', yearStart).lte('tanggal_evaluasi', yearEnd);
+        }
+
+        evalQuery = evalQuery.order('tanggal_evaluasi', { ascending: false });
 
         let kriQuery = supabase
             .from('key_risk_indicators')
@@ -524,10 +630,13 @@ export default function EvaluasiRisikoPage() {
         // Build alerts for breached KRIs
         const breached = kris.filter(k => (k.nilai_aktual ?? 0) > (k.batas_atas ?? Infinity));
         setAlerts(breached.map(k => ({
+            id: k.id,
+            unit_kerja_id: k.unit_kerja_id,
             unit: (k as any).unit_kerja?.nama_unit ?? 'Unknown Unit',
             kri: k.nama_kri,
             aktual: k.nilai_aktual ?? 0,
             batas: k.batas_atas ?? 0,
+            satuan: k.satuan,
         })));
 
         setLoading(false);
@@ -536,20 +645,20 @@ export default function EvaluasiRisikoPage() {
     useEffect(() => { fetchData(); }, [fetchData]);
 
     useEffect(() => {
-        supabase.from('unit_kerja').select('id, nama_unit').then(({ data }: { data: any }) => setUnits((data ?? []) as WorkUnit[]));
+        supabase.from('unit_kerja').select('id, nama_unit').order('nama_unit', { ascending: true }).then(({ data }: { data: any }) => setUnits((data ?? []) as WorkUnit[]));
         supabase.from('risk_inputs').select('id, nama_risiko, kode_risiko, nama_unit_kerja_id').then(({ data }: { data: any }) => setRisikoList((data ?? []) as RisikoLinked[]));
     }, []);
 
     const byStatus = {
-        Open: data.filter(d => d.status === 'Open').length,
-        Monitoring: data.filter(d => d.status === 'Monitoring').length,
-        MitigasiBerjalan: data.filter(d => d.status === 'Mitigasi Berjalan').length,
-        Closed: data.filter(d => d.status === 'Closed').length,
+        Open: filteredData.filter(d => d.status === 'Open').length,
+        Monitoring: filteredData.filter(d => d.status === 'Monitoring').length,
+        MitigasiBerjalan: filteredData.filter(d => d.status === 'Mitigasi Berjalan').length,
+        Closed: filteredData.filter(d => d.status === 'Closed').length,
     };
 
     // Group by unit kerja
     const grouped = Object.entries(
-        data.reduce<Record<string, EvaluasiRow[]>>((acc, r) => {
+        filteredData.reduce<Record<string, EvaluasiRow[]>>((acc, r) => {
             const unit = (r.unit_kerja as { nama_unit: string })?.nama_unit ?? 'Tidak Diketahui';
             if (!acc[unit]) acc[unit] = [];
             acc[unit].push(r);
@@ -615,6 +724,7 @@ export default function EvaluasiRisikoPage() {
                     kriList={kriList}
                     risikoList={risikoList}
                     saving={saving}
+                    initialData={modalInitialData}
                 />
             )}
 
@@ -623,15 +733,12 @@ export default function EvaluasiRisikoPage() {
                 subtitle="Evaluasi dan perbandingan profil risiko antar unit kerja."
                 actions={
                     <div className="flex gap-3 items-center">
-                        <select className="form-input w-36" value={year} onChange={e => setYear(e.target.value)}>
-                            {[CURRENT_YEAR + 1, CURRENT_YEAR, CURRENT_YEAR - 1].map(y => <option key={y} value={y}>{y}</option>)}
-                        </select>
                         <button className="btn-secondary flex items-center gap-2" onClick={handleExportPDF} disabled={downloading}>
                             {downloading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
                             <span>Laporan</span>
                         </button>
                         {!isAuditor && (
-                            <button className="btn-primary flex items-center gap-2" onClick={() => setShowModal(true)}>
+                            <button className="btn-primary flex items-center gap-2" onClick={handleOpenNewModal}>
                                 <Plus size={15} /> Tambah Evaluasi
                             </button>
                         )}
@@ -639,20 +746,99 @@ export default function EvaluasiRisikoPage() {
                 }
             />
 
+            {/* Filter Bar */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm mb-6 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-3 flex-1">
+                    {/* Search Form */}
+                    <form onSubmit={handleSearchSubmit} className="flex items-center gap-2">
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                            <input
+                                type="text"
+                                value={search}
+                                onChange={e => setSearch(e.target.value)}
+                                placeholder="Cari evaluasi / unit / KRI..."
+                                className="pl-9 pr-4 h-10 bg-slate-50 border border-slate-200 rounded-xl text-xs w-56 sm:w-64 focus:outline-none focus:ring-2 focus:ring-[#137fec]/40 focus:border-transparent transition-all"
+                            />
+                        </div>
+                        <button type="submit" className="h-10 px-3.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer">
+                            <Search size={14} />
+                            <span>Cari</span>
+                        </button>
+                    </form>
+
+                    {/* Unit Kerja Filter */}
+                    <select
+                        value={selectedUnitId}
+                        onChange={e => setSelectedUnitId(e.target.value)}
+                        className="h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#137fec]/40"
+                    >
+                        <option value="">Semua Unit Kerja</option>
+                        {units.map(u => <option key={u.id} value={u.id}>{u.nama_unit}</option>)}
+                    </select>
+
+                    {/* Tahun Filter */}
+                    <select
+                        value={year}
+                        onChange={e => setYear(e.target.value)}
+                        className="h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#137fec]/40"
+                    >
+                        <option value="">Semua Tahun</option>
+                        {[CURRENT_YEAR + 1, CURRENT_YEAR, CURRENT_YEAR - 1, CURRENT_YEAR - 2].map(y => (
+                            <option key={y} value={String(y)}>{y}</option>
+                        ))}
+                    </select>
+
+                    {/* Reset Button */}
+                    {(selectedUnitId || year !== String(CURRENT_YEAR) || search || searchQuery) && (
+                        <button
+                            type="button"
+                            onClick={handleResetFilters}
+                            className="h-10 px-3 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-xl text-xs font-medium transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                            <RotateCcw size={13} />
+                            <span>Reset</span>
+                        </button>
+                    )}
+                </div>
+            </div>
+
             {/* Alerts Banner */}
-            {alerts.length > 0 && (
-                <div className="mb-6 bg-rose-50 border border-rose-200 rounded-2xl p-4">
+            {filteredAlerts.length > 0 && (
+                <div className="mb-6 bg-rose-50 border border-rose-200 rounded-2xl p-4 shadow-xs">
                     <div className="flex items-center gap-2 mb-3">
                         <Bell size={18} className="text-rose-600 animate-pulse" />
-                        <p className="font-bold text-rose-700">⚠️ PERINGATAN — {alerts.length} KRI Melebihi Batas Ambang!</p>
+                        <p className="font-bold text-rose-700">⚠️ PERINGATAN — {filteredAlerts.length} KRI Melebihi Batas Ambang!</p>
                     </div>
-                    <div className="space-y-2">
-                        {alerts.map((a, i) => (
-                            <div key={i} className="flex items-center gap-3 bg-white border border-rose-100 rounded-xl p-3 text-sm">
-                                <AlertTriangle size={16} className="text-rose-500 flex-shrink-0" />
-                                <div>
-                                    <p className="font-semibold text-slate-800">{a.kri}</p>
-                                    <p className="text-xs text-slate-500">{a.unit} · Nilai Aktual: <strong className="text-rose-600">{a.aktual}</strong> &gt; Batas Atas: <strong>{a.batas}</strong></p>
+                    <div className="space-y-2.5">
+                        {filteredAlerts.map((a, i) => (
+                            <div
+                                key={i}
+                                onClick={() => handleEvaluateKRI(a)}
+                                className="group flex items-center justify-between bg-white hover:bg-rose-100/50 border border-rose-100 hover:border-rose-300 rounded-xl p-3.5 text-sm transition-all duration-200 shadow-xs cursor-pointer"
+                            >
+                                <div className="flex items-center gap-3">
+                                    <AlertTriangle size={18} className="text-rose-500 flex-shrink-0 group-hover:scale-110 transition-transform" />
+                                    <div>
+                                        <p className="font-semibold text-slate-800 group-hover:text-rose-700 transition-colors">{a.kri}</p>
+                                        <p className="text-xs text-slate-500 mt-0.5">
+                                            {a.unit} · Nilai Aktual: <strong className="text-rose-600">{a.aktual} {a.satuan || ''}</strong> &gt; Batas Atas: <strong>{a.batas} {a.satuan || ''}</strong>
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleEvaluateKRI(a);
+                                        }}
+                                        className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white font-medium text-xs rounded-xl transition-all shadow-xs cursor-pointer group-hover:shadow-sm"
+                                        title="Klik untuk langsung tambah evaluasi risiko ini"
+                                    >
+                                        <ClipboardCheck size={15} />
+                                        <span>Evaluasi</span>
+                                    </button>
                                 </div>
                             </div>
                         ))}
@@ -661,7 +847,7 @@ export default function EvaluasiRisikoPage() {
             )}
 
             <div className="grid grid-cols-2 xl:grid-cols-4 gap-5 mb-8">
-                <ScoreCard icon={<ShieldAlert size={22} className="text-slate-500" />} title="Total Evaluasi" value={data.length} colorClass="bg-slate-50 border-slate-100" />
+                <ScoreCard icon={<ShieldAlert size={22} className="text-slate-500" />} title="Total Evaluasi" value={filteredData.length} colorClass="bg-slate-50 border-slate-100" />
                 <ScoreCard icon={<AlertTriangle size={22} className="text-rose-500" />} title="Open" value={byStatus.Open} colorClass="bg-rose-50 border-rose-100" />
                 <ScoreCard icon={<Activity size={22} className="text-[#137fec]" />} title="Mitigasi Berjalan" value={byStatus.MitigasiBerjalan} colorClass="bg-blue-50 border-blue-100" />
                 <ScoreCard icon={<CheckCircle2 size={22} className="text-emerald-500" />} title="Closed" value={byStatus.Closed} colorClass="bg-emerald-50 border-emerald-100" />
@@ -677,11 +863,11 @@ export default function EvaluasiRisikoPage() {
                         <div className="animate-spin w-5 h-5 border-2 border-slate-200 border-t-[#137fec] rounded-full mr-2" />
                         <span className="text-sm">Memuat data...</span>
                     </div>
-                ) : data.length === 0 ? (
+                ) : filteredData.length === 0 ? (
                     <div className="text-center py-12 text-slate-400">
                         <div className="text-4xl mb-3">📊</div>
-                        <p className="text-sm font-medium">Belum ada evaluasi risiko untuk tahun ini</p>
-                        <p className="text-xs mt-1">Klik "Tambah Evaluasi" untuk mencatat evaluasi baru</p>
+                        <p className="text-sm font-medium">Tidak ada data evaluasi risiko yang sesuai filter</p>
+                        <p className="text-xs mt-1">Coba sesuaikan kata kunci pencarian, filter unit kerja, atau pilihan tahun.</p>
                     </div>
                 ) : (
                     <div className="space-y-4">

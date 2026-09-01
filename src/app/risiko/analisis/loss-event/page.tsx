@@ -407,7 +407,7 @@ export default function LossEventPage() {
     useEffect(() => { fetchData(); }, [fetchData]);
 
     useEffect(() => {
-        supabase.from('unit_kerja').select('id, nama_unit').then(({ data }: { data: any }) => setUnits((data ?? []) as WorkUnit[]));
+        supabase.from('unit_kerja').select('id, nama_unit').order('nama_unit', { ascending: true }).then(({ data }: { data: any }) => setUnits((data ?? []) as WorkUnit[]));
         supabase.from('risk_inputs').select('id, kode_risiko, nama_risiko, identifikasi_deskripsi, nama_unit_kerja_id, master_work_units(name)').then(({ data }: { data: any }) => setRiskInputs((data ?? []) as RiskInputOption[]));
         supabase.from('key_risk_indicators').select('id, nama_kri, kode_risiko, unit_kerja_id, risk_input_id').then(({ data }: { data: any }) => setKriList((data ?? []) as KRIItem[]));
     }, []);

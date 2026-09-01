@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Save, Loader2, Building2, Phone, Mail, Globe, MapPin, User, Tag, AlignLeft } from 'lucide-react';
+import { Save, Loader2, Building2, Phone, Mail, Globe, MapPin, User, Tag, AlignLeft, Calendar } from 'lucide-react';
 
 interface AppSettings {
     id?: string;
@@ -21,6 +21,8 @@ interface AppSettings {
     footer: string;
     jabatan_penandatangan_kiri: string;
     nama_penandatangan_kiri: string;
+    tahun_mulai: number;
+    tahun_selesai: number;
 }
 
 const DEFAULT: AppSettings = {
@@ -39,6 +41,8 @@ const DEFAULT: AppSettings = {
     footer: '',
     jabatan_penandatangan_kiri: 'Penanggungjawab Unit',
     nama_penandatangan_kiri: 'Penanggungjawab Unit Kerja',
+    tahun_mulai: 2026,
+    tahun_selesai: 2029,
 };
 
 export default function PengaturanAplikasiPage() {
@@ -68,6 +72,8 @@ export default function PengaturanAplikasiPage() {
                     footer: data.footer ?? '',
                     jabatan_penandatangan_kiri: data.jabatan_penandatangan_kiri || 'Penanggungjawab Unit',
                     nama_penandatangan_kiri: data.nama_penandatangan_kiri || 'Penanggungjawab Unit Kerja',
+                    tahun_mulai: data.tahun_mulai ? Number(data.tahun_mulai) : 2026,
+                    tahun_selesai: data.tahun_selesai ? Number(data.tahun_selesai) : 2029,
                 });
             }
             setLoading(false);
@@ -231,6 +237,42 @@ export default function PengaturanAplikasiPage() {
                                     />
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Periode Tahun Aplikasi */}
+                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+                    <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wide mb-5 flex items-center gap-2">
+                        <Calendar size={16} className="text-amber-500" /> Konfigurasi Periode Tahun Aplikasi
+                    </h2>
+                    <p className="text-xs text-slate-500 mb-4">
+                        Tentukan rentang periode tahun yang dapat dipilih oleh pengguna pada filter tahun di seluruh modul aplikasi (misal: 2026 s/d 2029).
+                    </p>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="form-label">Tahun Mulai Periode *</label>
+                            <input
+                                type="number"
+                                min="2000"
+                                max="2100"
+                                className="form-input w-full"
+                                value={form.tahun_mulai}
+                                onChange={e => setForm(prev => ({ ...prev, tahun_mulai: Number(e.target.value) }))}
+                                placeholder="2026"
+                            />
+                        </div>
+                        <div>
+                            <label className="form-label">Tahun Selesai Periode *</label>
+                            <input
+                                type="number"
+                                min="2000"
+                                max="2100"
+                                className="form-input w-full"
+                                value={form.tahun_selesai}
+                                onChange={e => setForm(prev => ({ ...prev, tahun_selesai: Number(e.target.value) }))}
+                                placeholder="2029"
+                            />
                         </div>
                     </div>
                 </div>

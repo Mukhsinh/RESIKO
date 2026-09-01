@@ -10,7 +10,7 @@ import { type ManajemenRisiko } from '@/lib/supabase';
 import { PageHeader, ScoreCard, FilterBar, TopActionBar } from '@/components/SharedUI';
 import DataTable, { type Column } from '@/components/DataTable';
 import FormInputAI from '@/components/FormInputAI';
-import { Plus, ClipboardList, CheckCircle2, Clock, AlertTriangle, Save, X, Loader2, Download } from 'lucide-react';
+import { Plus, ClipboardList, CheckCircle2, Clock, AlertTriangle, Save, X, Loader2, Download, Search, RotateCcw } from 'lucide-react';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -28,7 +28,7 @@ interface Penanganan {
     created_at: string;
     risiko?: { identifikasi_risiko: string; skor_risiko?: number; kode_risiko?: string };
     manajemen_risiko?: { identifikasi_risiko: string; skor_risiko?: number; kode_risiko?: string };
-    unit_kerja?: { nama_unit: string };
+    unit_kerja?: { id?: string; nama_unit: string };
 }
 
 interface RisikoItem {
@@ -65,11 +65,25 @@ export default function PenangananRisikoPage() {
     const [loading, setLoading] = useState(true);
     const [downloading, setDownloading] = useState(false);
     const [search, setSearch] = useState('');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [selectedUnitId, setSelectedUnitId] = useState('');
     const [year, setYear] = useState(String(CURRENT_YEAR));
     const [showModal, setShowModal] = useState(false);
     const [editId, setEditId] = useState<string | null>(null);
     const [form, setForm] = useState<Form>(defaultForm);
     const [saving, setSaving] = useState(false);
+
+    const handleSearchSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        setSearchQuery(search);
+    };
+
+    const handleResetFilters = () => {
+        setSearch('');
+        setSearchQuery('');
+        setSelectedUnitId('');
+        setYear(String(CURRENT_YEAR));
+    };
 
     const handleExportPDF = async () => {
         setDownloading(true);
@@ -301,7 +315,7 @@ export default function PenangananRisikoPage() {
 
     useEffect(() => {
         fetchData();
-        supabase.from('unit_kerja').select('id, nama_unit').then(({ data }: { data: any }) => setUnits(data || []));
+        supabase.from('unit_kerja').select('id, nama_unit').order('nama_unit', { ascending: true }).then(({ data }: { data: any }) => setUnits(data || []));
 
         // Fetch ALL identified risks from risk_inputs (the main table for /risiko/identifikasi)
         supabase
@@ -320,14 +334,29 @@ export default function PenangananRisikoPage() {
             });
     }, [fetchData]);
 
-    const filtered = data.filter(d =>
-        d.rencana_aksi.toLowerCase().includes(search.toLowerCase()) ||
-        d.penanggung_jawab.toLowerCase().includes(search.toLowerCase())
-    );
+    const filtered = React.useMemo(() => {
+        return data.filter(d => {
+            if (selectedUnitId && d.unit_kerja_id !== selectedUnitId && d.unit_kerja?.id !== selectedUnitId) {
+                return false;
+            }
+            const q = (searchQuery || search).toLowerCase().trim();
+            if (q) {
+                const match =
+                    (d.rencana_aksi || '').toLowerCase().includes(q) ||
+                    (d.penanggung_jawab || '').toLowerCase().includes(q) ||
+                    (d.jenis_penanganan || '').toLowerCase().includes(q) ||
+                    (d.status || '').toLowerCase().includes(q) ||
+                    (d.risiko?.identifikasi_risiko || '').toLowerCase().includes(q) ||
+                    (d.unit_kerja?.nama_unit || '').toLowerCase().includes(q);
+                if (!match) return false;
+            }
+            return true;
+        });
+    }, [data, selectedUnitId, search, searchQuery]);
 
-    const selesai = data.filter(d => d.status === 'Selesai').length;
-    const berjalan = data.filter(d => d.status === 'Berjalan').length;
-    const terlambat = data.filter(d => d.status === 'Terlambat').length;
+    const selesai = filtered.filter(d => d.status === 'Selesai').length;
+    const berjalan = filtered.filter(d => d.status === 'Berjalan').length;
+    const terlambat = filtered.filter(d => d.status === 'Terlambat').length;
 
     const selectedUnitObj = units.find(u => u.id === form.unit_kerja_id);
     const selectedUnitName = selectedUnitObj?.nama_unit || '';
@@ -422,7 +451,7 @@ export default function PenangananRisikoPage() {
             <PageHeader title="Penanganan Risiko" subtitle="Rencana aksi dan mitigasi untuk setiap risiko yang teridentifikasi." />
 
             <div className="grid grid-cols-2 xl:grid-cols-4 gap-5 mb-8">
-                <ScoreCard icon={<ClipboardList size={22} className="text-[#137fec]" />} title="Total Rencana" value={data.length} colorClass="bg-blue-50 border-blue-100" />
+                <ScoreCard icon={<ClipboardList size={22} className="text-[#137fec]" />} title="Total Rencana" value={filtered.length} colorClass="bg-blue-50 border-blue-100" />
                 <ScoreCard icon={<CheckCircle2 size={22} className="text-emerald-500" />} title="Selesai" value={selesai} colorClass="bg-emerald-50 border-emerald-100" />
                 <ScoreCard icon={<Clock size={22} className="text-amber-500" />} title="Berjalan" value={berjalan} colorClass="bg-amber-50 border-amber-100" />
                 <ScoreCard icon={<AlertTriangle size={22} className="text-rose-500" />} title="Terlambat" value={terlambat} colorClass="bg-rose-50 border-rose-100" />
@@ -430,7 +459,57 @@ export default function PenangananRisikoPage() {
 
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
                 <TopActionBar
-                    filters={<FilterBar searchValue={search} onSearchChange={setSearch} searchPlaceholder="Cari rencana aksi / PJ..." yearValue={year} onYearChange={setYear} />}
+                    filters={
+                        <div className="flex flex-wrap items-center gap-3">
+                            <form onSubmit={handleSearchSubmit} className="flex items-center gap-2">
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                    <input
+                                        type="text"
+                                        value={search}
+                                        onChange={e => setSearch(e.target.value)}
+                                        placeholder="Cari rencana aksi / PJ..."
+                                        className="pl-9 pr-4 h-10 bg-slate-50 border border-slate-200 rounded-xl text-xs w-52 sm:w-60 focus:outline-none focus:ring-2 focus:ring-[#137fec]/40 focus:border-transparent transition-all"
+                                    />
+                                </div>
+                                <button type="submit" className="h-10 px-3.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer">
+                                    <Search size={14} />
+                                    <span>Cari</span>
+                                </button>
+                            </form>
+
+                            <select
+                                value={selectedUnitId}
+                                onChange={e => setSelectedUnitId(e.target.value)}
+                                className="h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#137fec]/40"
+                            >
+                                <option value="">Semua Unit Kerja</option>
+                                {units.map(u => <option key={u.id} value={u.id}>{u.nama_unit}</option>)}
+                            </select>
+
+                            <select
+                                value={year}
+                                onChange={e => setYear(e.target.value)}
+                                className="h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#137fec]/40"
+                            >
+                                <option value="">Semua Tahun</option>
+                                {[CURRENT_YEAR + 1, CURRENT_YEAR, CURRENT_YEAR - 1, CURRENT_YEAR - 2].map(y => (
+                                    <option key={y} value={String(y)}>{y}</option>
+                                ))}
+                            </select>
+
+                            {(selectedUnitId || year !== String(CURRENT_YEAR) || search || searchQuery) && (
+                                <button
+                                    type="button"
+                                    onClick={handleResetFilters}
+                                    className="h-10 px-3 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-xl text-xs font-medium transition-colors flex items-center gap-1 cursor-pointer"
+                                >
+                                    <RotateCcw size={13} />
+                                    <span>Reset</span>
+                                </button>
+                            )}
+                        </div>
+                    }
                     actions={<>
                         <button className="btn-secondary" onClick={handleExportPDF} disabled={downloading}>
                             {downloading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
