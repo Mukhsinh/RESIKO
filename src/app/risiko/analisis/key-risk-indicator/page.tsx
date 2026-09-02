@@ -12,10 +12,10 @@ import {
     Plus, FileText, AlertTriangle, ShieldAlert, CheckCircle2,
     Eye, Edit, Trash2, X, Save, Loader2, TrendingDown, TrendingUp
 } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from 'recharts';
+import KRICandlestickChart from './KRICandlestickChart';
 
 /* ─── Types ─────────────────────────────────────────────────────── */
-interface KRIRow {
+export interface KRIRow {
     id: string;
     unit_kerja_id?: string;
     risk_input_id?: string;
@@ -46,7 +46,7 @@ interface RiskInputOption {
 }
 
 /* ─── Helpers ─────────────────────────────────────────────────── */
-function getKRIStatus(row: KRIRow): 'Over Limit' | 'Mendekati Batas' | 'Di Bawah Batas' | 'Normal' {
+export function computeAutoKRIStatus(row: { nilai_aktual?: number; batas_atas?: number; batas_bawah?: number }): 'Over Limit' | 'Mendekati Batas' | 'Di Bawah Batas' | 'Normal' {
     const aktual = Number(row.nilai_aktual ?? 0);
     const atas = Number(row.batas_atas ?? 0);
     const bawah = Number(row.batas_bawah ?? 0);
@@ -55,6 +55,16 @@ function getKRIStatus(row: KRIRow): 'Over Limit' | 'Mendekati Batas' | 'Di Bawah
     if (atas > 0 && aktual > atas * 0.8) return 'Mendekati Batas';
     if (bawah > 0 && aktual < bawah) return 'Di Bawah Batas';
     return 'Normal';
+}
+
+export function getKRIStatus(row: KRIRow | { status?: string; nilai_aktual?: number; batas_atas?: number; batas_bawah?: number }): 'Over Limit' | 'Mendekati Batas' | 'Di Bawah Batas' | 'Normal' {
+    const s = row.status?.trim();
+    if (s && s !== 'AUTO' && s !== 'Otomatis' && s !== 'Otomatis (Auto)' && s !== 'auto') {
+        if (s === 'Over Limit' || s === 'Mendekati Batas' || s === 'Di Bawah Batas' || s === 'Normal') {
+            return s as any;
+        }
+    }
+    return computeAutoKRIStatus(row);
 }
 
 function getStatusColor(statusOrRow: string | KRIRow) {
@@ -84,7 +94,7 @@ const EMPTY_FORM = {
     nilai_aktual: 0,
     satuan: '',
     frekuensi: 'Bulanan',
-    status: 'Normal',
+    status: 'AUTO',
 };
 
 /* ─── KRI Modal ─────────────────────────────────────────────────── */
@@ -150,7 +160,8 @@ function KRIModal({ row, onClose, onSave, units, riskInputs, existingRows, savin
 
     const aktual = Number(form.nilai_aktual);
     const atas = Number(form.batas_atas);
-    const melebihi = atas > 0 && aktual > atas;
+    const isAuto = !form.status || form.status === 'AUTO' || form.status === 'Otomatis' || form.status === 'Otomatis (Auto)' || form.status === 'auto';
+    const effectiveStatus = getKRIStatus(form);
 
     return (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 backdrop-blur-sm overflow-y-auto p-4">
@@ -245,9 +256,21 @@ function KRIModal({ row, onClose, onSave, units, riskInputs, existingRows, savin
                                 <input type="text" className="form-input w-full" value={form.satuan} onChange={e => f('satuan', e.target.value)} placeholder="e.g. kasus, %, event" />
                             </div>
                         </div>
-                        <div className={`mt-3 rounded-lg px-3 py-2 text-xs font-semibold flex items-center gap-2 ${melebihi ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                            {melebihi ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
-                            {melebihi ? `Nilai aktual (${aktual}) MELEBIHI batas atas (${atas})!` : `Nilai aktual (${aktual}) dalam batas toleransi.`}
+                        <div className={`mt-3 rounded-lg px-3 py-2 text-xs font-semibold flex items-center justify-between gap-2 ${effectiveStatus === 'Over Limit'
+                            ? 'bg-red-100 text-red-700 border border-red-200'
+                            : effectiveStatus === 'Mendekati Batas' || effectiveStatus === 'Di Bawah Batas'
+                                ? 'bg-amber-100 text-amber-700 border border-amber-200'
+                                : 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                            }`}>
+                            <div className="flex items-center gap-2">
+                                {effectiveStatus === 'Over Limit' ? <TrendingUp size={14} /> : effectiveStatus === 'Mendekati Batas' || effectiveStatus === 'Di Bawah Batas' ? <AlertTriangle size={14} /> : <TrendingDown size={14} />}
+                                <span>Status: <strong>{effectiveStatus}</strong> {isAuto ? '(Analisis Otomatis Sistem)' : '(Diinput Manual)'}</span>
+                            </div>
+                            <span className="text-[11px] font-normal opacity-90">
+                                {isAuto
+                                    ? (effectiveStatus === 'Over Limit' ? `Aktual (${aktual}) > Batas Atas (${atas})` : effectiveStatus === 'Mendekati Batas' ? `Aktual (${aktual}) mendekati Batas Atas (${atas})` : effectiveStatus === 'Di Bawah Batas' ? `Aktual (${aktual}) < Batas Bawah (${form.batas_bawah})` : `Aktual (${aktual}) dalam batas toleransi`)
+                                    : `Input Manual: ${form.status}`}
+                            </span>
                         </div>
                     </div>
 
@@ -265,12 +288,13 @@ function KRIModal({ row, onClose, onSave, units, riskInputs, existingRows, savin
                             </select>
                         </div>
                         <div>
-                            <label className="form-label">Status</label>
-                            <select className="form-input w-full" value={form.status} onChange={e => f('status', e.target.value)}>
-                                <option>Normal</option>
-                                <option>Mendekati Batas</option>
-                                <option>Over Limit</option>
-                                <option>Di Bawah Batas</option>
+                            <label className="form-label">Status (Auto Analisis / Manual)</label>
+                            <select className="form-input w-full" value={form.status || 'AUTO'} onChange={e => f('status', e.target.value)}>
+                                <option value="AUTO">Otomatis (Auto System)</option>
+                                <option value="Normal">Normal (Manual)</option>
+                                <option value="Mendekati Batas">Mendekati Batas (Manual)</option>
+                                <option value="Over Limit">Over Limit (Manual)</option>
+                                <option value="Di Bawah Batas">Di Bawah Batas (Manual)</option>
                             </select>
                         </div>
                     </div>
@@ -549,21 +573,7 @@ export default function KeyRiskIndicatorPage() {
         normal: normalRows.length,
     };
 
-    // Trend chart shows avg aktual, batas atas, and batas bawah per unit
-    const trendData = units.map(u => {
-        const unitRows = filtered.filter(r => r.unit_kerja_id === u.id);
-        const avgAktual = unitRows.length ? unitRows.reduce((s, r) => s + (r.nilai_aktual ?? 0), 0) / unitRows.length : 0;
-        const avgBatasAtas = unitRows.length ? unitRows.reduce((s, r) => s + (r.batas_atas ?? 0), 0) / unitRows.length : 0;
-        const avgBatasBawah = unitRows.length ? unitRows.reduce((s, r) => s + (r.batas_bawah ?? 0), 0) / unitRows.length : 0;
-        return {
-            id: u.id,
-            name: u.name,
-            'Nilai Aktual': +avgAktual.toFixed(1),
-            'Batas Atas': +avgBatasAtas.toFixed(1),
-            'Batas Bawah': +avgBatasBawah.toFixed(1),
-            count: unitRows.length
-        };
-    }).filter(u => u.count > 0 || u['Nilai Aktual'] > 0 || u['Batas Atas'] > 0 || u['Batas Bawah'] > 0);
+
 
     const handleSave = async (form: typeof EMPTY_FORM) => {
         setSaving(true);
@@ -687,7 +697,25 @@ export default function KeyRiskIndicatorPage() {
             }
         },
         { key: 'frekuensi', label: 'Frekuensi', className: 'text-center text-xs', render: r => r.frekuensi ?? 'Bulanan' },
-        { key: 'status', label: 'Pemenuhan', render: r => <span className={getStatusColor(r)}>{getStatusLabel(r)}</span> },
+        {
+            key: 'status',
+            label: 'Pemenuhan Status',
+            className: 'text-center',
+            render: r => {
+                const st = getKRIStatus(r);
+                const isAuto = !r.status || r.status === 'AUTO' || r.status === 'Otomatis' || r.status === 'Otomatis (Auto)' || r.status === 'auto';
+                return (
+                    <div className="flex items-center justify-center gap-1.5">
+                        <span className={getStatusColor(st)}>{st}</span>
+                        {isAuto ? (
+                            <span className="text-[10px] bg-slate-100 text-slate-500 border border-slate-200 px-1.5 py-0.5 rounded font-mono" title="Analisis Otomatis oleh Sistem">Auto</span>
+                        ) : (
+                            <span className="text-[10px] bg-amber-50 text-amber-600 border border-amber-200 px-1.5 py-0.5 rounded font-mono" title="Status Diinput Manual">Manual</span>
+                        )}
+                    </div>
+                );
+            }
+        },
         {
             key: 'actions', label: 'Aksi', render: r => (
                 <div className="flex gap-1 justify-center">
@@ -819,47 +847,14 @@ export default function KeyRiskIndicatorPage() {
                 />
             </div>
 
-            {/* Trend Chart */}
-            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 mb-8">
-                <h3 className="text-sm font-semibold text-slate-800 mb-6 flex items-center justify-between">
-                    <div className="flex items-center">
-                        <span className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center mr-3">📈</span>
-                        Perbandingan Nilai Aktual vs Batas (Batas Bawah & Batas Atas) per Unit Kerja
-                    </div>
-                    <span className="text-xs text-slate-400 font-normal">
-                        Rata-rata per unit kerja
-                    </span>
-                </h3>
-                <div className="h-[340px] w-full">
-                    {trendData.length > 0 ? (
-                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                            <LineChart data={trendData} margin={{ top: 20, right: 30, left: 10, bottom: 85 }}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                                <XAxis
-                                    dataKey="name"
-                                    axisLine={false}
-                                    tickLine={false}
-                                    tick={{ fontSize: 11, fill: '#475569' }}
-                                    angle={-25}
-                                    textAnchor="end"
-                                    interval={0}
-                                    height={75}
-                                />
-                                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} />
-                                <RechartsTooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0/0.1)' }} />
-                                <Legend wrapperStyle={{ paddingTop: '10px' }} />
-                                <Line type="monotone" dataKey="Nilai Aktual" stroke="#4F46E5" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
-                                <Line type="monotone" dataKey="Batas Atas" stroke="#EF4444" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3 }} />
-                                <Line type="monotone" dataKey="Batas Bawah" stroke="#10B981" strokeWidth={2} strokeDasharray="3 3" dot={{ r: 3 }} />
-                            </LineChart>
-                        </ResponsiveContainer>
-                    ) : (
-                        <div className="flex items-center justify-center h-full text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl">
-                            Belum ada data KRI — tambahkan data terlebih dahulu
-                        </div>
-                    )}
-                </div>
-            </div>
+            {/* KRI Candlestick Chart */}
+            <KRICandlestickChart
+                rows={filtered}
+                units={units}
+                selectedUnitFilter={unitFilter}
+                onUnitFilterChange={setUnitFilter}
+                onViewDetail={setViewRow}
+            />
 
             {/* Table */}
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-8">
@@ -875,7 +870,7 @@ export default function KeyRiskIndicatorPage() {
                                     {units.find(u => u.id === unitFilter)?.name || profile?.unit_kerja_name || 'Unit Anda'}
                                 </div>
                             ) : (
-                                <select className="form-input text-sm h-9" value={unitFilter} onChange={e => setUnitFilter(e.target.value)}>
+                                <select className="form-input text-sm h-9 max-w-full min-w-0 truncate" value={unitFilter} onChange={e => setUnitFilter(e.target.value)}>
                                     <option value="">Semua Unit</option>
                                     {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                                 </select>

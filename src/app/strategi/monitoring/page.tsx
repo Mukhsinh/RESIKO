@@ -26,7 +26,7 @@ const PERIODE_LABELS: Record<string, string[]> = {
 interface RealisasiData { tipe: string; inputs: string[]; rata_rata: number; }
 
 const serializeRealisasi = (tipe: string, inputs: string[]): string => {
-    const validNums = inputs.map(i => parseFloat(i)).filter(n => !isNaN(n));
+    const validNums = inputs.map(i => parseFloat(String(i || '').replace(/,/g, '.'))).filter(n => !isNaN(n));
     const avg = validNums.length > 0 ? Math.round((validNums.reduce((a, b) => a + b, 0) / validNums.length) * 100) / 100 : 0;
     return JSON.stringify({ tipe, inputs, rata_rata: avg });
 };
@@ -37,7 +37,14 @@ const deserializeRealisasi = (val: string | null | undefined): RealisasiData & {
     try {
         const p = JSON.parse(val);
         if (p && typeof p === 'object' && p.tipe) {
-            return { tipe: p.tipe, inputs: p.inputs || [''], rata_rata: p.rata_rata || 0, rawText: String(p.rata_rata || '') };
+            const inputsArr = p.inputs || [''];
+            const lastNonEmpty = [...inputsArr].reverse().find((x: string) => x && String(x).trim() !== '') || inputsArr[0] || '';
+            return {
+                tipe: p.tipe,
+                inputs: inputsArr,
+                rata_rata: p.rata_rata || 0,
+                rawText: String(lastNonEmpty || '')
+            };
         }
     } catch {
         const num = parseFloat(val);
@@ -48,8 +55,11 @@ const deserializeRealisasi = (val: string | null | undefined): RealisasiData & {
 
 export const getDisplayRealisasi = (val: string | null | undefined): string => {
     const d = deserializeRealisasi(val);
-    if (d.rata_rata) return String(d.rata_rata);
-    return d.rawText || '-';
+    if (d.rata_rata && d.rata_rata !== 0) return String(d.rata_rata);
+    const textInput = d.inputs.find(i => i && String(i).trim() !== '');
+    if (textInput && String(textInput).trim() !== '') return String(textInput).trim();
+    if (d.rawText && String(d.rawText).trim() !== '') return String(d.rawText).trim();
+    return '-';
 };
 
 // Helper functions for mathematically exact SVG arcs (prevents curve distortion / "benjol")
@@ -116,7 +126,7 @@ export function matchCriteriaLabel(val: number, label: string): boolean {
 
 export function evaluateKpi(targetStr: string, realisasiStr: string | null | undefined, kriteriaJson?: string | null): KpiEvaluation {
     const displayVal = getDisplayRealisasi(realisasiStr);
-    const cleanVal = displayVal.replace(/,/g, '.');
+    const cleanVal = displayVal.replace(/,/g, '.').trim();
     const rMatch = cleanVal.match(/-?\d+(?:\.\d+)?/);
     const r = rMatch ? parseFloat(rMatch[0]) : NaN;
 
@@ -163,13 +173,51 @@ export function evaluateKpi(targetStr: string, realisasiStr: string | null | und
                             levelName = bottom ? bottom.label : 'Rendah';
                         }
                     }
+                } else if (cleanVal && cleanVal !== '-') {
+                    // Qualitative realisasi input handling
+                    const lowerReal = cleanVal.toLowerCase();
+
+                    // Search for matching criteria item by label (exact or partial)
+                    let matched = parsedItems.find(p => {
+                        const lowerLbl = p.label.toLowerCase();
+                        return lowerLbl === lowerReal || lowerReal.includes(lowerLbl) || lowerLbl.includes(lowerReal);
+                    });
+
+                    if (matched) {
+                        realisasiSkor = matched.skor;
+                        levelName = matched.label;
+                    } else {
+                        const lowerTarget = (targetStr || '').toLowerCase().trim();
+                        const sorted = [...parsedItems].sort((a, b) => b.skor - a.skor);
+                        const top = sorted[0];
+                        const bottom = sorted[sorted.length - 1];
+
+                        if (lowerTarget && (lowerReal === lowerTarget || lowerReal.includes(lowerTarget) || lowerTarget.includes(lowerReal))) {
+                            realisasiSkor = top ? top.skor : targetSkor;
+                            levelName = top ? top.label : 'Tercapai';
+                        } else {
+                            // General qualitative keyword matching
+                            if (lowerReal.includes('istimewa') || lowerReal.includes('sangat baik') || lowerReal.includes('sesuai') || lowerReal.includes('tercapai') || lowerReal.includes('lengkap') || lowerReal.includes('ada') || lowerReal.includes('ya')) {
+                                realisasiSkor = top ? top.skor : targetSkor;
+                                levelName = top ? top.label : 'Tercapai';
+                            } else if (lowerReal.includes('baik') || lowerReal.includes('cukup') || lowerReal.includes('sebagian')) {
+                                const mid = sorted.find(s => s.skor < (top?.skor || 4) && s.skor > (bottom?.skor || 0));
+                                realisasiSkor = mid ? mid.skor : Math.max(1, targetSkor - 1);
+                                levelName = mid ? mid.label : 'Cukup';
+                            } else {
+                                realisasiSkor = bottom ? bottom.skor : 1;
+                                levelName = bottom ? bottom.label : 'Rendah';
+                            }
+                        }
+                    }
                 }
             }
         } catch { }
     } else {
-        // Fallback for standard 4-level numerical percentage
+        // Fallback for standard numerical percentage
         const tMatch = targetStr ? targetStr.replace(/,/g, '.').match(/-?\d+(?:\.\d+)?/) : null;
         const t = tMatch ? parseFloat(tMatch[0]) : NaN;
+
         if (!isNaN(t) && !isNaN(r) && t > 0) {
             let pct = (r / t) * 100;
             if (targetStr.includes('≤') || targetStr.toLowerCase().includes('<=') || targetStr.toLowerCase().includes('maksimal')) {
@@ -179,6 +227,27 @@ export function evaluateKpi(targetStr: string, realisasiStr: string | null | und
             else if (pct >= 80) { realisasiSkor = 3; levelName = 'Baik'; }
             else if (pct >= 70) { realisasiSkor = 2; levelName = 'Cukup'; }
             else { realisasiSkor = 1; levelName = 'Rendah'; }
+        } else if (cleanVal && cleanVal !== '-') {
+            // Qualitative target & realisasi without kriteriaJson array
+            const lowerTarget = (targetStr || '').toLowerCase().trim();
+            const lowerReal = cleanVal.toLowerCase().trim();
+
+            if (lowerTarget && (lowerReal === lowerTarget || lowerReal.includes(lowerTarget) || lowerTarget.includes(lowerReal))) {
+                realisasiSkor = 4;
+                levelName = 'Istimewa';
+            } else if (lowerReal.includes('istimewa') || lowerReal.includes('sangat baik') || lowerReal.includes('sesuai') || lowerReal.includes('tercapai') || lowerReal.includes('ada') || lowerReal.includes('lengkap') || lowerReal.includes('ya')) {
+                realisasiSkor = 4;
+                levelName = 'Istimewa';
+            } else if (lowerReal.includes('baik')) {
+                realisasiSkor = 3;
+                levelName = 'Baik';
+            } else if (lowerReal.includes('cukup') || lowerReal.includes('sebagian')) {
+                realisasiSkor = 2;
+                levelName = 'Cukup';
+            } else {
+                realisasiSkor = 1;
+                levelName = 'Rendah';
+            }
         }
     }
 
@@ -247,7 +316,7 @@ function SpeedometerGauge({
     const targetDisplay = target ? target.trim() : '-';
 
     let valueDisplay = displayVal;
-    if (displayVal !== '-' && hasPercent && !displayVal.includes('%')) {
+    if (displayVal !== '-' && hasPercent && !displayVal.includes('%') && !isNaN(Number(displayVal))) {
         valueDisplay = `${displayVal}%`;
     }
 
@@ -322,23 +391,34 @@ function AchievementBadge({ target, realisasi, kriteriaJson }: { target: string;
     const needleAngle = -90 + (clampedPct / 120) * 180;
 
     const hasPercent = (target && target.includes('%')) || (displayVal && displayVal.includes('%'));
-    const valWithUnit = hasPercent && !displayVal.includes('%') ? `${displayVal}%` : displayVal;
+    const valWithUnit = hasPercent && !displayVal.includes('%') && !isNaN(Number(displayVal)) ? `${displayVal}%` : displayVal;
+
+    const miniCx = 30;
+    const miniCy = 26;
+    const miniR = 20;
+    const miniStrokeWidth = 4.5;
+
+    const miniRedArc = describeArc(miniCx, miniCy, miniR, 180, 75);
+    const miniAmberArc = describeArc(miniCx, miniCy, miniR, 75, 60);
+    const miniBlueArc = describeArc(miniCx, miniCy, miniR, 60, 30);
+    const miniGreenArc = describeArc(miniCx, miniCy, miniR, 30, 0);
 
     return (
         <div className="flex items-center gap-3 py-1 pl-1 select-none">
             {/* Miniature Gauge */}
-            <div className="relative w-12 h-6 flex items-center justify-center">
+            <div className="relative w-12 h-6 flex items-center justify-center shrink-0">
                 <svg className="w-full h-full overflow-visible" viewBox="0 0 60 30">
-                    <path d="M 5 26 A 21 21 0 0 1 55 26" fill="none" stroke="#f1f5f9" strokeWidth="5.5" strokeLinecap="round" />
-                    <path d="M 5 26 A 21 21 0 0 1 17.25 14.75" fill="none" stroke="#ef4444" strokeWidth="5.5" />
-                    <path d="M 17.25 14.75 A 21 21 0 0 1 23.5 10" fill="none" stroke="#f59e0b" strokeWidth="5.5" />
-                    <path d="M 23.5 10 A 21 21 0 0 1 42.5 10" fill="none" stroke="#3b82f6" strokeWidth="5.5" />
-                    <path d="M 42.5 10 A 21 21 0 0 1 55 26" fill="none" stroke="#10b981" strokeWidth="5.5" strokeLinecap="round" />
-                    <g transform={`rotate(${needleAngle} 30 26)`} className="transition-transform duration-500 ease-out">
-                        <line x1="30" y1="26" x2="30" y2="8" stroke="#1e293b" strokeWidth="2.2" strokeLinecap="round" />
+                    <path d={describeArc(miniCx, miniCy, miniR, 180, 0)} fill="none" stroke="#f1f5f9" strokeWidth={miniStrokeWidth + 2} strokeLinecap="round" />
+                    <path d={miniRedArc} fill="none" stroke="#ef4444" strokeWidth={miniStrokeWidth} strokeLinecap="round" />
+                    <path d={miniAmberArc} fill="none" stroke="#f59e0b" strokeWidth={miniStrokeWidth} />
+                    <path d={miniBlueArc} fill="none" stroke="#3b82f6" strokeWidth={miniStrokeWidth} />
+                    <path d={miniGreenArc} fill="none" stroke="#10b981" strokeWidth={miniStrokeWidth} strokeLinecap="round" />
+                    <g transform={`rotate(${needleAngle} ${miniCx} ${miniCy})`} className="transition-transform duration-500 ease-out">
+                        <line x1={miniCx} y1={miniCy} x2={miniCx} y2={miniCy - 15} stroke="#1e293b" strokeWidth="2" strokeLinecap="round" />
+                        <circle cx={miniCx} cy={miniCy - 15} r="1" fill={evalRes.gaugeColor} />
                     </g>
-                    <circle cx="30" cy="26" r="3.5" fill="#1e293b" />
-                    <circle cx="30" cy="26" r="1.2" fill="#ffffff" />
+                    <circle cx={miniCx} cy={miniCy} r="3" fill="#1e293b" />
+                    <circle cx={miniCx} cy={miniCy} r="1" fill="#ffffff" />
                 </svg>
             </div>
 
@@ -436,6 +516,21 @@ export default function MonitoringKPIPage() {
         return found?.kriteria_nilai || null;
     }, [cascadingList]);
 
+    const formCriteriaJson = getKriteriaForKpi(form.kpi, form.unit_kerja_id);
+    const formCriteriaOptions = React.useMemo(() => {
+        if (!formCriteriaJson) return [];
+        try {
+            const arr = JSON.parse(formCriteriaJson);
+            if (Array.isArray(arr)) {
+                return arr.map((item: any) => ({
+                    skor: parseFloat(String(item.skor ?? '').replace(/,/g, '.')),
+                    label: String(item.label || item.keterangan || '').trim()
+                })).filter(o => o.label);
+            }
+        } catch { }
+        return [];
+    }, [formCriteriaJson]);
+
     // Scorecard Detail Modal State
     const [detailModalOpen, setDetailModalOpen] = useState(false);
     const [detailModalType, setDetailModalType] = useState<'all' | 'achieved' | 'unachieved' | 'summary'>('all');
@@ -443,12 +538,15 @@ export default function MonitoringKPIPage() {
 
     const evaluatedData = React.useMemo(() => {
         return data.map(item => {
-            const crit = getKriteriaForKpi(item.kpi, item.unit_kerja_id);
-            const evalRes = evaluateKpi(item.target, item.realisasi, crit);
+            const cascFound = cascadingList.find(c => c.kpi === item.kpi && (!item.unit_kerja_id || c.unit_kerja_id === item.unit_kerja_id));
+            const activeTarget = cascFound?.target || item.target;
+            const crit = cascFound?.kriteria_nilai || null;
+            const evalRes = evaluateKpi(activeTarget, item.realisasi, crit);
             const displayVal = getDisplayRealisasi(item.realisasi);
             const isMonitored = displayVal !== '-' && item.realisasi !== null && item.realisasi !== '';
             return {
                 ...item,
+                target: activeTarget,
                 crit,
                 evalRes,
                 displayVal,
@@ -521,9 +619,11 @@ export default function MonitoringKPIPage() {
     const openEdit = (row: ManajemenStrategi) => {
         setEditId(row.id);
         const d = deserializeRealisasi(row.realisasi);
+        const cascFound = cascadingList.find(c => c.kpi === row.kpi && (!row.unit_kerja_id || c.unit_kerja_id === row.unit_kerja_id));
+        const activeTarget = cascFound?.target || row.target;
         setForm({
             tahun: row.tahun, unit_kerja_id: row.unit_kerja_id,
-            sasaran_strategis: row.sasaran_strategis, kpi: row.kpi, target: row.target,
+            sasaran_strategis: row.sasaran_strategis, kpi: row.kpi, target: activeTarget,
             realisasi: row.realisasi,
             periode_tipe: d.tipe, periode_inputs: d.inputs,
         });
@@ -1045,6 +1145,39 @@ export default function MonitoringKPIPage() {
                             {/* Periode Inputs */}
                             <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
                                 <p className="text-xs font-bold text-slate-500 mb-3">Input Realisasi ({form.periode_tipe === 'tahunan' ? 'Tahunan' : form.periode_tipe === 'bulanan' ? '12 Bulan' : form.periode_tipe === 'triwulanan' ? '4 Triwulan' : '2 Semester'})</p>
+
+                                {formCriteriaOptions.length > 0 && (
+                                    <div className="mb-3.5 p-3 bg-blue-50/80 border border-blue-100 rounded-xl space-y-2">
+                                        <p className="text-[11px] font-bold text-blue-800 flex items-center gap-1.5">
+                                            <Target size={13} className="text-blue-600" /> Pilihan Kriteria Realisasi Kualitatif (Klik untuk mengisi):
+                                        </p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {formCriteriaOptions.map((opt, oIdx) => (
+                                                <button
+                                                    key={oIdx}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setForm(f => {
+                                                            const newInputs = [...f.periode_inputs];
+                                                            if (newInputs.length === 1 || newInputs.every(x => !x || x.trim() === '')) {
+                                                                newInputs[0] = opt.label;
+                                                            } else {
+                                                                const firstEmpty = newInputs.findIndex(x => !x || x.trim() === '');
+                                                                if (firstEmpty !== -1) newInputs[firstEmpty] = opt.label;
+                                                                else newInputs[0] = opt.label;
+                                                            }
+                                                            return { ...f, periode_inputs: newInputs };
+                                                        });
+                                                    }}
+                                                    className="text-xs px-2.5 py-1 bg-white border border-blue-200 text-blue-700 rounded-lg font-medium hover:bg-blue-600 hover:text-white transition-all shadow-xs cursor-pointer"
+                                                >
+                                                    {opt.label} <span className="text-[10px] opacity-75 font-mono">(Skor: {opt.skor})</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div className={`grid gap-3 ${form.periode_tipe === 'bulanan' ? 'grid-cols-2 md:grid-cols-3' : form.periode_tipe === 'triwulanan' ? 'grid-cols-2' : 'grid-cols-1'}`}>
                                     {periodeLabels.map((label, i) => (
                                         <div key={label}>
@@ -1052,7 +1185,7 @@ export default function MonitoringKPIPage() {
                                             <input
                                                 type="text"
                                                 className="form-input text-sm"
-                                                placeholder="Nilai"
+                                                placeholder="Nilai Realisasi (Ketik angka / kualitatif)"
                                                 value={form.periode_inputs[i] || ''}
                                                 onChange={e => handlePeriodeInput(i, e.target.value)}
                                             />

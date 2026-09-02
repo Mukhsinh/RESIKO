@@ -137,13 +137,30 @@ export default function LaporanRisikoPage() {
     const filteredKris = kris.filter(k => checkMatch(k.unit_kerja_id, k.unit_kerja));
     const filteredLossEvents = lossEvents.filter(l => checkMatch(l.unit_kerja_id, l.unit_kerja));
 
+    function getKRIStatus(row: { status?: string; nilai_aktual?: number; batas_atas?: number; batas_bawah?: number }): 'Over Limit' | 'Mendekati Batas' | 'Di Bawah Batas' | 'Normal' {
+        const s = row.status?.trim();
+        if (s && s !== 'AUTO' && s !== 'Otomatis' && s !== 'Otomatis (Auto)' && s !== 'auto') {
+            if (s === 'Over Limit' || s === 'Mendekati Batas' || s === 'Di Bawah Batas' || s === 'Normal') {
+                return s as any;
+            }
+        }
+        const aktual = Number(row.nilai_aktual ?? 0);
+        const atas = Number(row.batas_atas ?? 0);
+        const bawah = Number(row.batas_bawah ?? 0);
+
+        if (atas > 0 && aktual > atas) return 'Over Limit';
+        if (atas > 0 && aktual > atas * 0.8) return 'Mendekati Batas';
+        if (bawah > 0 && aktual < bawah) return 'Di Bawah Batas';
+        return 'Normal';
+    }
+
     // Summary Statistics
     const totalRisks = filteredRisks.length;
     const avgScore = totalRisks ? (filteredRisks.reduce((s, r) => s + (r.skor_risiko || 0), 0) / totalRisks).toFixed(1) : '0';
     const sangatTinggi = filteredRisks.filter(r => (r.skor_risiko || 0) >= 15).length;
     const closedRisks = filteredRisks.filter(r => r.status === 'Closed' || r.status_mitigasi === 'Selesai').length;
     const totalLossValuation = filteredLossEvents.reduce((s, l) => s + (l.dampak_finansial || 0), 0);
-    const totalKriOverLimit = filteredKris.filter(k => (k.nilai_aktual ?? 0) > (k.batas_atas ?? Infinity)).length;
+    const totalKriOverLimit = filteredKris.filter(k => getKRIStatus(k) === 'Over Limit').length;
 
     // Grouping for page view
     const byUnit = Object.entries(
@@ -227,7 +244,7 @@ export default function LaporanRisikoPage() {
             'Nilai Aktual': k.nilai_aktual ?? '-',
             'Satuan': k.satuan || '-',
             'Frekuensi': k.frekuensi || 'Bulanan',
-            'Status Pemenuhan': k.status || '-'
+            'Status Pemenuhan': getKRIStatus(k)
         }));
 
         const lossRows = filteredLossEvents.map((l, idx) => ({
@@ -795,7 +812,7 @@ export default function LaporanRisikoPage() {
             `${k.batas_bawah ?? '-'} - ${k.batas_atas ?? '-'} ${k.satuan || ''}`,
             `${k.nilai_aktual ?? '-'} ${k.satuan || ''}`,
             k.frekuensi || 'Bulanan',
-            k.status || 'Normal'
+            getKRIStatus(k)
         ]);
 
         if (kriTableData.length === 0) {

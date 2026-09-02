@@ -9,6 +9,7 @@ import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { useAppSettings } from '@/hooks/useAppSettings';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { evaluateKpi, getDisplayRealisasi } from '@/app/strategi/monitoring/page';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -32,19 +33,20 @@ const deserializeRealisasi = (val: string | null | undefined): RealisasiData & {
     try {
         const p = JSON.parse(val);
         if (p && typeof p === 'object' && p.tipe) {
-            return { tipe: p.tipe, inputs: p.inputs || [''], rata_rata: p.rata_rata || 0, rawText: String(p.rata_rata || '') };
+            const inputsArr = p.inputs || [''];
+            const lastNonEmpty = [...inputsArr].reverse().find((x: string) => x && String(x).trim() !== '') || inputsArr[0] || '';
+            return {
+                tipe: p.tipe,
+                inputs: inputsArr,
+                rata_rata: p.rata_rata || 0,
+                rawText: String(lastNonEmpty || '')
+            };
         }
     } catch {
         const num = parseFloat(val);
         return { tipe: 'tahunan', inputs: [val], rata_rata: isNaN(num) ? 0 : num, rawText: val };
     }
     return def;
-};
-
-const getDisplayRealisasi = (val: string | null | undefined): string => {
-    const d = deserializeRealisasi(val);
-    if (d.rata_rata) return String(d.rata_rata);
-    return d.rawText || '-';
 };
 
 const getNumericRealisasi = (val: string | null | undefined): number => {
@@ -54,16 +56,13 @@ const getNumericRealisasi = (val: string | null | undefined): number => {
     return isNaN(num) ? 0 : num;
 };
 
-function AchievementBadge({ target, realisasi }: { target: string; realisasi: string }) {
-    const t = parseFloat(target);
-    const r = getNumericRealisasi(realisasi);
+function AchievementBadge({ target, realisasi, kriteriaJson }: { target: string; realisasi: string; kriteriaJson?: string | null }) {
     const displayVal = getDisplayRealisasi(realisasi);
-
-    if (isNaN(t) || t === 0 || displayVal === '-') {
+    if (displayVal === '-' || !realisasi) {
         return <span className="text-xs text-slate-400 font-medium">N/A</span>;
     }
-
-    const pct = (r / t) * 100;
+    const evalRes = evaluateKpi(target, realisasi, kriteriaJson);
+    const pct = evalRes.pct;
     const colorClass = pct >= 100
         ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
         : pct >= 70
