@@ -234,7 +234,8 @@ export default function DashboardPage() {
                 const risikoTinggi = rList.filter(r => r.skor_risiko >= 15).length;
                 const risikoSedang = rList.filter(r => r.skor_risiko >= 5 && r.skor_risiko < 10).length;
                 const risikoRendah = rList.filter(r => r.skor_risiko < 5).length;
-                const totalStrategi = sList.length;
+                const totalCascading = ((cascadingData as any[]) ?? []).length;
+                const totalStrategi = totalCascading;
 
                 const strategiTercapai = sList.filter(s => s.isAchieved).length;
 
@@ -459,7 +460,7 @@ export default function DashboardPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
                 <ScoreCard
                     icon={<Target size={22} className="text-[#137fec]" />}
-                    title="Target KPI Utama"
+                    title="Total KPI"
                     value={stats.totalStrategi}
                     subtitle={`Tercapai: ${stats.strategiTercapai} KPI (${kpiPct}%)`}
                     colorClass="bg-white border-slate-200/80 shadow-xs hover:border-blue-300"
@@ -467,7 +468,7 @@ export default function DashboardPage() {
                         <button
                             onClick={() => setCardModalType('targetKpi')}
                             className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                            title="Lihat Detail Target KPI Utama"
+                            title="Lihat Detail Total KPI"
                         >
                             <Eye size={15} />
                         </button>
@@ -854,7 +855,7 @@ function DashboardCardDetailModal({
             const tercapai = list.filter(s => s.isAchieved);
             const pct = list.length > 0 ? Math.round((tercapai.length / list.length) * 100) : 0;
             return {
-                title: 'Detail Target KPI Utama & Sasaran Strategis',
+                title: 'Detail Total KPI & Sasaran Strategis',
                 subtitle: 'Evaluasi pencapaian Indikator Kinerja Utama (IKT) per Sasaran Strategis',
                 headerGradient: 'from-blue-600 to-indigo-700',
                 icon: <Target size={24} className="text-white" />,

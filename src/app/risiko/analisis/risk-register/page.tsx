@@ -165,6 +165,15 @@ export default function RiskRegisterPage() {
             (d.kode_risiko || '').toLowerCase().includes(search.toLowerCase());
         const matchUnit = isManager ? isMatchUnit(d.unit_kerja_id, d.unit_kerja) : (unitFilter ? d.unit_kerja_id === unitFilter || (d.unit_kerja as any)?.id === unitFilter : true);
         return matchSearch && matchUnit;
+    }).sort((a, b) => {
+        const unitA = a.unit_kerja?.nama_unit ?? '';
+        const unitB = b.unit_kerja?.nama_unit ?? '';
+        const unitCompare = unitA.localeCompare(unitB, 'id', { sensitivity: 'base' });
+        if (unitCompare !== 0) return unitCompare;
+
+        const kodeA = a.kode_risiko ?? '';
+        const kodeB = b.kode_risiko ?? '';
+        return kodeA.localeCompare(kodeB, 'id', { numeric: true, sensitivity: 'base' });
     });
 
     const { settings } = useAppSettings();
@@ -461,8 +470,8 @@ export default function RiskRegisterPage() {
                                 onClick={handleUnduhLaporan}
                                 disabled={downloading}
                             >
-                                {downloading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
-                                <span>Unduh Laporan</span>
+                                {downloading ? <Loader2 size={15} className="animate-spin" /> : <FileText size={15} />}
+                                <span>Laporan</span>
                             </button>
                         </>
                     }

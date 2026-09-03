@@ -1012,9 +1012,9 @@ export default function MonitoringKPIPage() {
             <div className="grid grid-cols-2 xl:grid-cols-4 gap-5 mb-8">
                 <ScoreCard
                     icon={<Target size={22} className="text-[#137fec]" />}
-                    title="Total Data Monitoring"
+                    title="KPI Termonitoring"
                     value={monitoredList.length}
-                    subtitle={`dari ${data.length} total KPI terdaftar`}
+                    subtitle={`dari ${cascadingList.length} total KPI`}
                     colorClass="bg-blue-50 border-blue-100"
                     action={
                         <button onClick={() => openDetailModal('all')} className="p-1 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors" title="Lihat Rincian Detail">
