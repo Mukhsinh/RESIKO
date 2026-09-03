@@ -5,7 +5,7 @@ import { supabase, type ManajemenStrategi, type UnitKerja } from '@/lib/supabase
 import { PageHeader, ScoreCard, FilterBar, TopActionBar } from '@/components/SharedUI';
 import DataTable, { type Column } from '@/components/DataTable';
 import FormInputAI from '@/components/FormInputAI';
-import { Plus, Download, Upload, FileText, TrendingUp, Target, CheckCircle2, Clock, Save, X, Loader2, Eye, Search } from 'lucide-react';
+import { Plus, Download, Upload, FileText, TrendingUp, Target, CheckCircle2, Clock, Save, X, Loader2, Eye, Search, Building2, Layers } from 'lucide-react';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useAppSettings } from '@/hooks/useAppSettings';
 import jsPDF from 'jspdf';
@@ -223,10 +223,10 @@ export function evaluateKpi(targetStr: string, realisasiStr: string | null | und
             if (targetStr.includes('≤') || targetStr.toLowerCase().includes('<=') || targetStr.toLowerCase().includes('maksimal')) {
                 pct = r <= t ? 100 : (t / r) * 100;
             }
-            if (pct >= 100) { realisasiSkor = 4; levelName = 'Istimewa'; }
-            else if (pct >= 80) { realisasiSkor = 3; levelName = 'Baik'; }
-            else if (pct >= 70) { realisasiSkor = 2; levelName = 'Cukup'; }
-            else { realisasiSkor = 1; levelName = 'Rendah'; }
+            if (pct >= 80) { realisasiSkor = 4; levelName = 'Sangat Baik'; }
+            else if (pct >= 65) { realisasiSkor = 3; levelName = 'Baik'; }
+            else if (pct >= 50) { realisasiSkor = 2; levelName = 'Cukup'; }
+            else { realisasiSkor = 1; levelName = 'Kurang'; }
         } else if (cleanVal && cleanVal !== '-') {
             // Qualitative target & realisasi without kriteriaJson array
             const lowerTarget = (targetStr || '').toLowerCase().trim();
@@ -234,10 +234,10 @@ export function evaluateKpi(targetStr: string, realisasiStr: string | null | und
 
             if (lowerTarget && (lowerReal === lowerTarget || lowerReal.includes(lowerTarget) || lowerTarget.includes(lowerReal))) {
                 realisasiSkor = 4;
-                levelName = 'Istimewa';
+                levelName = 'Sangat Baik';
             } else if (lowerReal.includes('istimewa') || lowerReal.includes('sangat baik') || lowerReal.includes('sesuai') || lowerReal.includes('tercapai') || lowerReal.includes('ada') || lowerReal.includes('lengkap') || lowerReal.includes('ya')) {
                 realisasiSkor = 4;
-                levelName = 'Istimewa';
+                levelName = 'Sangat Baik';
             } else if (lowerReal.includes('baik')) {
                 realisasiSkor = 3;
                 levelName = 'Baik';
@@ -246,7 +246,7 @@ export function evaluateKpi(targetStr: string, realisasiStr: string | null | und
                 levelName = 'Cukup';
             } else {
                 realisasiSkor = 1;
-                levelName = 'Rendah';
+                levelName = 'Kurang';
             }
         }
     }
@@ -535,6 +535,7 @@ export default function MonitoringKPIPage() {
     const [detailModalOpen, setDetailModalOpen] = useState(false);
     const [detailModalType, setDetailModalType] = useState<'all' | 'achieved' | 'unachieved' | 'summary'>('all');
     const [detailSearch, setDetailSearch] = useState('');
+    const [showReportModal, setShowReportModal] = useState(false);
 
     const evaluatedData = React.useMemo(() => {
         return data.map(item => {
@@ -654,13 +655,13 @@ export default function MonitoringKPIPage() {
         finally { setSaving(false); }
     };
 
-    const handleExportPDF = () => {
+    const handleExportPDF = (exportMode: 'unit_kerja' | 'perspektif' = 'unit_kerja') => {
         const doc = new jsPDF('p', 'pt', 'a4');
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
 
         const hexToRgb = (hex: string): [number, number, number] => {
-            const def: [number, number, number] = [19, 127, 236]; // Blue primary
+            const def: [number, number, number] = [19, 127, 236];
             if (!hex) return def;
             const h = hex.replace('#', '');
             if (h.length !== 6) return def;
@@ -690,7 +691,7 @@ export default function MonitoringKPIPage() {
             const totalPages = d.getNumberOfPages();
             for (let i = 1; i <= totalPages; i++) {
                 d.setPage(i);
-                if (i === 1) continue; // skip cover
+                if (i === 1) continue;
                 d.setTextColor(148, 163, 184);
                 d.setFontSize(8);
                 d.setFont('helvetica', 'normal');
@@ -737,40 +738,82 @@ export default function MonitoringKPIPage() {
         doc.setFont('helvetica', 'bold');
         doc.text('LAPORAN MONITORING CAPAIAN KPI', pageWidth / 2, pageHeight / 2 - 60, { align: 'center' });
 
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'normal');
+        const coverSubTitle = exportMode === 'perspektif'
+            ? 'Format Laporan: Basis Perspektif BSC'
+            : 'Format Laporan: Basis Unit Kerja';
+        doc.text(coverSubTitle, pageWidth / 2, pageHeight / 2 - 30, { align: 'center' });
+
         doc.setFontSize(16);
         doc.setFont('helvetica', 'normal');
-        doc.text(`Tahun: ${year || 'Semua'}`, pageWidth / 2, pageHeight / 2, { align: 'center' });
+        doc.text(`Tahun Anggaran: ${year || 'Semua'}`, pageWidth / 2, pageHeight / 2 + 10, { align: 'center' });
 
         doc.setFontSize(12);
-        doc.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), pageWidth / 2, pageHeight / 2 + 50, { align: 'center' });
+        doc.text((settings?.nama_rs || 'RUMAH SAKIT').toUpperCase(), pageWidth / 2, pageHeight / 2 + 60, { align: 'center' });
 
         doc.addPage();
 
         // TOC Page
         let tocPageNum = doc.getCurrentPageInfo().pageNumber;
-        doc.addPage(); // skip for TOC
+        doc.addPage();
 
         let contentPageStart = doc.getCurrentPageInfo().pageNumber;
 
         // Draw KOP Surat on first content page
         drawKopSurat(doc);
 
+        const secATitle = exportMode === 'perspektif'
+            ? 'A. Rekapitulasi Capaian Realisasi KPI Berdasarkan Perspektif BSC'
+            : 'A. Rekapitulasi Capaian Realisasi KPI Unit Kerja';
+
         doc.setTextColor(30, 41, 59);
         doc.setFontSize(13);
         doc.setFont('helvetica', 'bold');
-        doc.text('A. Rekapitulasi Capaian Realisasi KPI Unit Kerja', 40, 140);
+        doc.text(secATitle, 40, 140);
 
         let finalY = 160;
 
-        // Group by unit_kerja
-        const itemsByUnit: Record<string, ManajemenStrategi[]> = {};
-        filtered.forEach(item => {
-            const uName = item.unit_kerja?.nama_unit || 'Unit Tidak Diketahui';
-            if (!itemsByUnit[uName]) itemsByUnit[uName] = [];
-            itemsByUnit[uName].push(item);
+        // Grouping
+        const cascadingMapPerspektif = new Map<string, string>();
+        (cascadingList || []).forEach(c => {
+            if (c.perspektif) {
+                if (c.kpi && c.unit_kerja_id) cascadingMapPerspektif.set(`${c.kpi}_${c.unit_kerja_id}`, c.perspektif);
+                if (c.kpi) cascadingMapPerspektif.set(c.kpi, c.perspektif);
+                if (c.sasaran_strategis) cascadingMapPerspektif.set(c.sasaran_strategis, c.perspektif);
+            }
         });
 
-        const byUnit = Object.entries(itemsByUnit).sort((a, b) => a[0].localeCompare(b[0]));
+        const itemsByGroup: Record<string, ManajemenStrategi[]> = {};
+
+        if (exportMode === 'perspektif') {
+            filtered.forEach(item => {
+                const pName = cascadingMapPerspektif.get(`${item.kpi}_${item.unit_kerja_id}`) ||
+                    cascadingMapPerspektif.get(item.kpi) ||
+                    cascadingMapPerspektif.get(item.sasaran_strategis) ||
+                    'Perspektif Lainnya';
+                if (!itemsByGroup[pName]) itemsByGroup[pName] = [];
+                itemsByGroup[pName].push(item);
+            });
+        } else {
+            filtered.forEach(item => {
+                const uName = item.unit_kerja?.nama_unit || 'Unit Tidak Diketahui';
+                if (!itemsByGroup[uName]) itemsByGroup[uName] = [];
+                itemsByGroup[uName].push(item);
+            });
+        }
+
+        const bscOrder = ['Keuangan', 'Pelanggan', 'Proses Bisnis Internal', 'Pertumbuhan & Pembelajaran', 'Pembelajaran & Pertumbuhan', 'Finansial'];
+        const byGroup = Object.entries(itemsByGroup).sort((a, b) => {
+            if (exportMode === 'perspektif') {
+                const idxA = bscOrder.findIndex(o => a[0].toLowerCase().includes(o.toLowerCase()));
+                const idxB = bscOrder.findIndex(o => b[0].toLowerCase().includes(o.toLowerCase()));
+                if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+                if (idxA !== -1) return -1;
+                if (idxB !== -1) return 1;
+            }
+            return a[0].localeCompare(b[0]);
+        });
 
         let grandTotalTargetSkor = 0;
         let grandTotalNilaiSkor = 0;
@@ -779,8 +822,9 @@ export default function MonitoringKPIPage() {
         let countCukup = 0;
         let countRendah = 0;
         let totalKpiCount = 0;
+        const formatNum = (val: number) => Number.isInteger(val) ? String(val) : String(parseFloat(val.toFixed(2)));
 
-        byUnit.forEach(([unitName, uItems]) => {
+        byGroup.forEach(([groupName, gItems]) => {
             if (finalY > pageHeight - 160) {
                 doc.addPage();
                 finalY = 70;
@@ -789,15 +833,14 @@ export default function MonitoringKPIPage() {
             doc.setFontSize(11);
             doc.setFont('helvetica', 'bold');
             doc.setTextColor(30, 41, 59);
-            doc.text(`Unit Kerja: ${unitName}`, 40, finalY + 15);
+            const groupHeaderLabel = exportMode === 'perspektif' ? `Perspektif BSC: ${groupName}` : `Unit Kerja: ${groupName}`;
+            doc.text(groupHeaderLabel, 40, finalY + 15);
 
             let rowIdx = 1;
-            let unitTotalTargetSkor = 0;
-            let unitTotalNilaiSkor = 0;
+            let groupTotalTargetSkor = 0;
+            let groupTotalNilaiSkor = 0;
 
-            const formatNum = (val: number) => Number.isInteger(val) ? String(val) : String(parseFloat(val.toFixed(2)));
-
-            const tableData = uItems.map(item => {
+            const tableData = gItems.map(item => {
                 totalKpiCount++;
                 const crit = getKriteriaForKpi(item.kpi, item.unit_kerja_id);
                 const evalRes = evaluateKpi(item.target, item.realisasi, crit);
@@ -806,55 +849,87 @@ export default function MonitoringKPIPage() {
                 const hasPct = (item.target?.includes('%') || displayVal?.includes('%')) && displayVal !== '-' && !displayVal.includes('%');
                 const realisasiExport = hasPct ? `${displayVal}%` : displayVal;
 
-                unitTotalTargetSkor += evalRes.targetSkor;
-                unitTotalNilaiSkor += evalRes.realisasiSkor;
+                groupTotalTargetSkor += evalRes.targetSkor;
+                groupTotalNilaiSkor += evalRes.realisasiSkor;
                 grandTotalTargetSkor += evalRes.targetSkor;
                 grandTotalNilaiSkor += evalRes.realisasiSkor;
 
-                if (evalRes.pct >= 100) countIstimewa++;
-                else if (evalRes.pct >= 75) countBaik++;
+                if (evalRes.pct >= 80) countIstimewa++;
+                else if (evalRes.pct >= 65) countBaik++;
                 else if (evalRes.pct >= 50) countCukup++;
                 else countRendah++;
 
-                return [
-                    rowIdx++,
-                    item.sasaran_strategis || '-',
-                    item.kpi || '-',
-                    item.target || '-',
-                    formatNum(evalRes.targetSkor),
-                    realisasiExport || '-',
-                    formatNum(evalRes.realisasiSkor),
-                    evalRes.levelName
-                ];
+                if (exportMode === 'perspektif') {
+                    return [
+                        rowIdx++,
+                        item.sasaran_strategis || '-',
+                        item.kpi || '-',
+                        item.unit_kerja?.nama_unit || '-',
+                        item.target || '-',
+                        formatNum(evalRes.targetSkor),
+                        realisasiExport || '-',
+                        formatNum(evalRes.realisasiSkor),
+                        evalRes.levelName
+                    ];
+                } else {
+                    return [
+                        rowIdx++,
+                        item.sasaran_strategis || '-',
+                        item.kpi || '-',
+                        item.target || '-',
+                        formatNum(evalRes.targetSkor),
+                        realisasiExport || '-',
+                        formatNum(evalRes.realisasiSkor),
+                        evalRes.levelName
+                    ];
+                }
             });
 
-            const unitPct = unitTotalTargetSkor > 0 ? ((unitTotalNilaiSkor / unitTotalTargetSkor) * 100).toFixed(1) : '0';
+            const groupPct = groupTotalTargetSkor > 0 ? ((groupTotalNilaiSkor / groupTotalTargetSkor) * 100).toFixed(1) : '0';
+
+            const tableHead = exportMode === 'perspektif'
+                ? [['No', 'Sasaran Strategis', 'KPI / Indikator', 'Unit Kerja', 'Target', 'Skor Target', 'Realisasi', 'Nilai Skor', 'Keterangan']]
+                : [['No', 'Sasaran Strategis', 'KPI / Indikator', 'Target', 'Skor Target', 'Realisasi', 'Nilai Skor', 'Keterangan']];
+
+            const footColSpan = exportMode === 'perspektif' ? 5 : 4;
+
+            const colStyles = exportMode === 'perspektif' ? {
+                0: { cellWidth: 20, halign: 'center' },
+                1: { cellWidth: 95 },
+                2: { cellWidth: 95 },
+                3: { cellWidth: 70 },
+                4: { cellWidth: 45, halign: 'center' },
+                5: { cellWidth: 40, halign: 'center' },
+                6: { cellWidth: 45, halign: 'center' },
+                7: { cellWidth: 40, halign: 'center' },
+                8: { cellWidth: 65, halign: 'center' }
+            } : {
+                0: { cellWidth: 22, halign: 'center' },
+                1: { cellWidth: 110 },
+                2: { cellWidth: 110 },
+                3: { cellWidth: 50, halign: 'center' },
+                4: { cellWidth: 45, halign: 'center' },
+                5: { cellWidth: 50, halign: 'center' },
+                6: { cellWidth: 45, halign: 'center' },
+                7: { cellWidth: 83, halign: 'center' }
+            };
 
             autoTable(doc, {
                 startY: finalY + 22,
-                head: [['No', 'Sasaran Strategis', 'KPI / Indikator', 'Target', 'Skor Target', 'Realisasi', 'Nilai Skor', 'Keterangan']],
+                head: tableHead,
                 body: tableData,
                 foot: [[
-                    { content: 'Total Skor Unit', colSpan: 4, styles: { halign: 'right', fontStyle: 'bold' } },
-                    { content: formatNum(unitTotalTargetSkor), styles: { halign: 'center', fontStyle: 'bold' } },
+                    { content: 'Total Skor', colSpan: footColSpan, styles: { halign: 'right', fontStyle: 'bold' } },
+                    { content: formatNum(groupTotalTargetSkor), styles: { halign: 'center', fontStyle: 'bold' } },
                     { content: '', styles: { halign: 'center' } },
-                    { content: formatNum(unitTotalNilaiSkor), styles: { halign: 'center', fontStyle: 'bold' } },
-                    { content: `Capaian: ${unitPct}%`, styles: { halign: 'center', fontStyle: 'bold' } }
+                    { content: formatNum(groupTotalNilaiSkor), styles: { halign: 'center', fontStyle: 'bold' } },
+                    { content: `Capaian: ${groupPct}%`, styles: { halign: 'center', fontStyle: 'bold' } }
                 ]],
                 theme: 'grid',
                 headStyles: { fillColor: rgbColor, fontSize: 7.5, fontStyle: 'bold', halign: 'center', valign: 'middle', cellPadding: 3 },
                 footStyles: { fillColor: [241, 245, 249], textColor: [30, 41, 59], fontSize: 7.5 },
                 styles: { fontSize: 7.5, cellPadding: 3.5, overflow: 'linebreak' },
-                columnStyles: {
-                    0: { cellWidth: 22, halign: 'center' },
-                    1: { cellWidth: 110 },
-                    2: { cellWidth: 110 },
-                    3: { cellWidth: 50, halign: 'center' },
-                    4: { cellWidth: 45, halign: 'center' },
-                    5: { cellWidth: 50, halign: 'center' },
-                    6: { cellWidth: 45, halign: 'center' },
-                    7: { cellWidth: 83, halign: 'center' }
-                },
+                columnStyles: colStyles as any,
                 margin: { left: 40, right: 40 },
                 didDrawPage: (data) => {
                     const currentPage = doc.getCurrentPageInfo().pageNumber;
@@ -878,18 +953,18 @@ export default function MonitoringKPIPage() {
         doc.text('B. Analisis Komparasi Capaian Skor KPI', 40, finalY);
 
         const overallPctSkor = grandTotalTargetSkor > 0 ? (grandTotalNilaiSkor / grandTotalTargetSkor) * 100 : 0;
-        let overallLevelName = 'Rendah';
-        if (overallPctSkor >= 100) overallLevelName = 'Istimewa';
-        else if (overallPctSkor >= 80) overallLevelName = 'Baik';
-        else if (overallPctSkor >= 70) overallLevelName = 'Cukup';
+        let overallLevelName = 'Kurang';
+        if (overallPctSkor >= 80) overallLevelName = 'Sangat Baik (A)';
+        else if (overallPctSkor >= 65) overallLevelName = 'Baik (B)';
+        else if (overallPctSkor >= 50) overallLevelName = 'Cukup (C)';
 
         const summaryTableData = [
             ['Total Indikator KPI Ter-monitoring', `${totalKpiCount} Indikator`],
-            ['Total Skor Target Maksimal (Batas Target)', `${grandTotalTargetSkor} Poin`],
-            ['Total Nilai Skor Realisasi Capaian', `${grandTotalNilaiSkor} Poin`],
+            ['Total Skor Target Maksimal (Batas Target)', `${formatNum(grandTotalTargetSkor)} Poin`],
+            ['Total Nilai Skor Realisasi Capaian', `${formatNum(grandTotalNilaiSkor)} Poin`],
             ['Persentase Capaian Skor Keseluruhan', `${overallPctSkor.toFixed(1)}%`],
             ['Kategori Evaluasi Kinerja Keseluruhan', overallLevelName.toUpperCase()],
-            ['Distribusi Level Capaian KPI', `Istimewa: ${countIstimewa} | Baik: ${countBaik} | Cukup: ${countCukup} | Rendah: ${countRendah}`],
+            ['Distribusi Level Capaian KPI', `Sangat Baik: ${countIstimewa} | Baik: ${countBaik} | Cukup: ${countCukup} | Kurang: ${countRendah}`],
         ];
 
         autoTable(doc, {
@@ -909,9 +984,9 @@ export default function MonitoringKPIPage() {
         let compY = (doc as any).lastAutoTable.finalY + 15;
 
         doc.setFillColor(248, 250, 252);
-        doc.roundedRect(40, compY, pageWidth - 80, 65, 4, 4, 'F');
+        doc.roundedRect(40, compY, pageWidth - 80, 55, 4, 4, 'F');
         doc.setDrawColor(226, 232, 240);
-        doc.roundedRect(40, compY, pageWidth - 80, 65, 4, 4, 'S');
+        doc.roundedRect(40, compY, pageWidth - 80, 55, 4, 4, 'S');
 
         doc.setFontSize(9);
         doc.setFont('helvetica', 'bold');
@@ -921,11 +996,45 @@ export default function MonitoringKPIPage() {
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(8);
         doc.setTextColor(51, 65, 85);
-        const compText = `Berdasarkan analisis komparatif antara nilai skor realisasi (${grandTotalNilaiSkor}) terhadap skor target (${grandTotalTargetSkor}), diperoleh rasio pencapaian skor sebesar ${overallPctSkor.toFixed(1)}% dengan kriteria kinerja '${overallLevelName}'. Sebanyak ${countIstimewa + countBaik} KPI (${(((countIstimewa + countBaik) / (totalKpiCount || 1)) * 100).toFixed(0)}%) berada pada kategori Baik/Istimewa. Unit kerja disarankan mempertahankan tren positif ini dan melakukan mitigasi prioritas pada ${countCukup + countRendah} KPI yang memerlukan perhatian.`;
+        const compText = `Berdasarkan analisis komparatif antara nilai skor realisasi (${formatNum(grandTotalNilaiSkor)}) terhadap skor target (${formatNum(grandTotalTargetSkor)}), diperoleh rasio pencapaian skor sebesar ${overallPctSkor.toFixed(1)}% dengan kriteria kinerja '${overallLevelName}'. Sebanyak ${countIstimewa + countBaik} KPI (${(((countIstimewa + countBaik) / (totalKpiCount || 1)) * 100).toFixed(0)}%) berada pada kategori Baik/Sangat Baik. Unit kerja disarankan mempertahankan tren positif ini dan melakukan mitigasi prioritas pada ${countCukup + countRendah} KPI yang memerlukan perhatian.`;
         const wrappedComp = doc.splitTextToSize(compText, pageWidth - 100);
         doc.text(wrappedComp, 50, compY + 28);
 
-        finalY = compY + 80;
+        // Section C: Score Criteria Legend Table
+        let legY = compY + 65;
+        if (legY > pageHeight - 160) {
+            doc.addPage();
+            legY = 70;
+        }
+
+        doc.setTextColor(30, 41, 59);
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text('C. Kriteria Evaluasi & Skala Penilaian Kinerja', 40, legY);
+
+        const legendData = [
+            ['Sangat Baik (AA / A)', 'Rasio Skor ≥ 80%', 'Manajemen dan layanan sangat optimal'],
+            ['Baik (B / BB / BBB)', '65% ≤ Rasio Skor < 80%', 'Standar operasional sehat'],
+            ['Cukup (CC / C)', '50% ≤ Rasio Skor < 65%', 'Memenuhi standar minimum (catatan perbaikan)'],
+            ['Kurang / Sangat Kurang', 'Rasio Skor < 50%', 'Di bawah standar minimum (intervensi pembina BLUD)'],
+        ];
+
+        autoTable(doc, {
+            startY: legY + 10,
+            head: [['Kategori Kinerja', 'Rentang Rasio Skor', 'Keterangan Standar Evaluasi']],
+            body: legendData,
+            theme: 'grid',
+            headStyles: { fillColor: rgbColor, fontSize: 8, fontStyle: 'bold' },
+            styles: { fontSize: 7.5, cellPadding: 4 },
+            columnStyles: {
+                0: { cellWidth: 130, fontStyle: 'bold' },
+                1: { cellWidth: 120, halign: 'center' },
+                2: { cellWidth: 265 }
+            },
+            margin: { left: 40, right: 40 },
+        });
+
+        finalY = (doc as any).lastAutoTable.finalY + 30;
 
         // Add TOC Content
         doc.setPage(tocPageNum);
@@ -942,42 +1051,47 @@ export default function MonitoringKPIPage() {
         doc.setFontSize(10.5);
         doc.setFont('helvetica', 'normal');
 
-        doc.text('1. Rekapitulasi Capaian Realisasi KPI Unit Kerja', 40, 140);
+        doc.text(secATitle, 40, 140);
         doc.text(`${contentPageStart - 1}`, pageWidth - 40, 140, { align: 'right' });
 
-        doc.text('2. Analisis Komparasi Capaian Skor KPI', 40, 160);
+        doc.text('B. Analisis Komparasi Capaian Skor KPI', 40, 160);
         doc.text(`${contentPageStart - 1}`, pageWidth - 40, 160, { align: 'right' });
 
-        doc.text('3. Lembar Tanda Tangan Pengesahan Laporan', 40, 180);
+        doc.text('C. Kriteria Evaluasi & Skala Penilaian Kinerja', 40, 180);
+        doc.text(`${contentPageStart - 1}`, pageWidth - 40, 180, { align: 'right' });
+
+        doc.text('D. Lembar Tanda Tangan Pengesahan Laporan', 40, 200);
         const lastPage = doc.getNumberOfPages();
-        doc.text(`${lastPage - 1}`, pageWidth - 40, 180, { align: 'right' });
+        doc.text(`${lastPage - 1}`, pageWidth - 40, 200, { align: 'right' });
 
         // Go to last page for signature block
         doc.setPage(lastPage);
-        if (finalY > pageHeight - 140) {
+        let signY = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 30 : finalY;
+        if (signY > pageHeight - 140) {
             doc.addPage();
-            finalY = 70;
+            signY = 80;
         } else {
-            finalY += 10;
+            signY += 10;
         }
 
         doc.setFontSize(9.5);
         doc.setTextColor(51, 65, 85);
         doc.setFont('helvetica', 'normal');
-        doc.text('Disiapkan oleh,', 60, finalY);
-        doc.text(settings?.jabatan_penandatangan_kiri || 'Penanggungjawab Unit', 60, finalY + 14);
-        doc.line(60, finalY + 65, 200, finalY + 65);
-        doc.text(settings?.nama_penandatangan_kiri || '............................', 60, finalY + 78);
+        doc.text('Disiapkan oleh,', 60, signY);
+        doc.text(settings?.jabatan_penandatangan_kiri || 'Penanggungjawab Unit', 60, signY + 14);
+        doc.line(60, signY + 65, 200, signY + 65);
+        doc.text(settings?.nama_penandatangan_kiri || '............................', 60, signY + 78);
 
-        doc.text('Disetujui oleh,', pageWidth - 200, finalY);
+        doc.text('Disetujui oleh,', pageWidth - 200, signY);
         doc.setFont('helvetica', 'bold');
-        doc.text(settings?.kepala_rs || 'Direktur RS', pageWidth - 200, finalY + 14);
+        doc.text(settings?.kepala_rs || 'Direktur RS', pageWidth - 200, signY + 14);
         doc.line(pageWidth - 200, finalY + 65, pageWidth - 60, finalY + 65);
         doc.setFont('helvetica', 'normal');
         doc.text(`NIP: ${settings?.nip_kepala || '-'}`, pageWidth - 200, finalY + 78);
 
         addFooter(doc);
-        doc.save(`Laporan_Monitoring_KPI_${year || 'Semua'}.pdf`);
+        const fileName = exportMode === 'perspektif' ? `Laporan_Monitoring_KPI_Perspektif_${year || 'Semua'}.pdf` : `Laporan_Monitoring_KPI_Unit_${year || 'Semua'}.pdf`;
+        doc.save(fileName);
     };
 
     const columns: Column<ManajemenStrategi>[] = [
@@ -1080,12 +1194,73 @@ export default function MonitoringKPIPage() {
                     actions={<>
                         <button className="btn-secondary"><Download size={15} /><span className="hidden sm:inline">Template</span></button>
                         <button className="btn-secondary"><Upload size={15} /><span className="hidden sm:inline">Import</span></button>
-                        <button className="btn-secondary border-primary/20 text-primary hover:bg-primary/5" onClick={handleExportPDF}><FileText size={15} /><span className="hidden sm:inline">Laporan</span></button>
+                        <button className="btn-secondary border-primary/20 text-primary hover:bg-primary/5" onClick={() => setShowReportModal(true)}><FileText size={15} /><span className="hidden sm:inline">Laporan</span></button>
                         <button className="btn-primary" onClick={openAdd}><Plus size={15} /><span>Input Realisasi</span></button>
                     </>}
                 />
                 <DataTable columns={columns} data={filtered} onEdit={openEdit} onDelete={handleDelete} onView={openEdit} isLoading={loading} />
             </div>
+
+            {/* Report Selection Modal */}
+            {showReportModal && (
+                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl animate-in fade-in zoom-in duration-200 border border-slate-100">
+                        <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
+                                    <FileText size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-slate-800 text-base">Pilih Jenis Laporan Monitoring KPI</h3>
+                                    <p className="text-xs text-slate-400">Pilih format pengelompokan data laporan PDF</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setShowReportModal(false)} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        <div className="py-5 space-y-3">
+                            <button
+                                onClick={() => { setShowReportModal(false); handleExportPDF('unit_kerja'); }}
+                                className="w-full p-4 rounded-xl border border-slate-200 hover:border-blue-500 hover:bg-blue-50/50 text-left transition-all group flex items-start gap-4"
+                            >
+                                <div className="p-2.5 bg-slate-100 group-hover:bg-blue-100 text-slate-600 group-hover:text-blue-600 rounded-xl transition-colors shrink-0 mt-0.5">
+                                    <Building2 size={20} />
+                                </div>
+                                <div>
+                                    <h4 className="font-bold text-slate-800 group-hover:text-blue-700 text-sm">Basis Unit Kerja</h4>
+                                    <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                                        Rekapitulasi realisasi KPI dikelompokkan berdasarkan masing-masing Unit Kerja.
+                                    </p>
+                                </div>
+                            </button>
+
+                            <button
+                                onClick={() => { setShowReportModal(false); handleExportPDF('perspektif'); }}
+                                className="w-full p-4 rounded-xl border border-slate-200 hover:border-violet-500 hover:bg-violet-50/50 text-left transition-all group flex items-start gap-4"
+                            >
+                                <div className="p-2.5 bg-slate-100 group-hover:bg-violet-100 text-slate-600 group-hover:text-violet-600 rounded-xl transition-colors shrink-0 mt-0.5">
+                                    <Layers size={20} />
+                                </div>
+                                <div>
+                                    <h4 className="font-bold text-slate-800 group-hover:text-violet-700 text-sm">Basis Perspektif BSC</h4>
+                                    <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                                        Rekapitulasi realisasi KPI dikelompokkan berdasarkan 4 Perspektif Balanced Scorecard (Keuangan, Pelanggan, Internal, Pembelajaran).
+                                    </p>
+                                </div>
+                            </button>
+                        </div>
+
+                        <div className="pt-3 border-t border-slate-100 flex justify-end">
+                            <button onClick={() => setShowReportModal(false)} className="btn-secondary text-xs px-4">
+                                Batal
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            <DataTable columns={columns} data={filtered} onEdit={openEdit} onDelete={handleDelete} onView={openEdit} isLoading={loading} />
 
             {showModal && (
                 <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -1216,106 +1391,109 @@ export default function MonitoringKPIPage() {
                         </form>
                     </div>
                 </div>
-            )}
+            )
+            }
 
             {/* Modal Detail Rincian KPI */}
-            {detailModalOpen && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden">
-                        {/* Modal Header */}
-                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
-                            <div>
-                                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                                    {detailModalType === 'all' && <><Target className="text-blue-500" size={20} /> Rincian Total Data Monitoring KPI</>}
-                                    {detailModalType === 'achieved' && <><CheckCircle2 className="text-emerald-500" size={20} /> Rincian KPI Tercapai (Memenuhi Target)</>}
-                                    {detailModalType === 'unachieved' && <><Clock className="text-amber-500" size={20} /> Rincian KPI Belum Tercapai (Di Bawah Target)</>}
-                                    {detailModalType === 'summary' && <><TrendingUp className="text-violet-500" size={20} /> Rincian Rekapitulasi Capaian Skor KPI</>}
-                                </h3>
-                                <p className="text-xs text-slate-500 mt-0.5">
-                                    {detailModalType === 'all' && `Menampilkan seluruh ${monitoredList.length} KPI yang telah dilakukan monitoring realisasi.`}
-                                    {detailModalType === 'achieved' && `Menampilkan ${achievedList.length} KPI yang telah mencapai atau melebihi target.`}
-                                    {detailModalType === 'unachieved' && `Menampilkan ${unachievedList.length} KPI yang memerlukan evaluasi karena belum mencapai target.`}
-                                    {detailModalType === 'summary' && `Tingkat capaian agregat skor: ${overallCapaianPct}% (Total Skor Realisasi ${grandRealSkor.toFixed(1)} / Total Skor Target ${grandTargetSkor.toFixed(1)}).`}
-                                </p>
+            {
+                detailModalOpen && (
+                    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden">
+                            {/* Modal Header */}
+                            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+                                <div>
+                                    <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                        {detailModalType === 'all' && <><Target className="text-blue-500" size={20} /> Rincian Total Data Monitoring KPI</>}
+                                        {detailModalType === 'achieved' && <><CheckCircle2 className="text-emerald-500" size={20} /> Rincian KPI Tercapai (Memenuhi Target)</>}
+                                        {detailModalType === 'unachieved' && <><Clock className="text-amber-500" size={20} /> Rincian KPI Belum Tercapai (Di Bawah Target)</>}
+                                        {detailModalType === 'summary' && <><TrendingUp className="text-violet-500" size={20} /> Rincian Rekapitulasi Capaian Skor KPI</>}
+                                    </h3>
+                                    <p className="text-xs text-slate-500 mt-0.5">
+                                        {detailModalType === 'all' && `Menampilkan seluruh ${monitoredList.length} KPI yang telah dilakukan monitoring realisasi.`}
+                                        {detailModalType === 'achieved' && `Menampilkan ${achievedList.length} KPI yang telah mencapai atau melebihi target.`}
+                                        {detailModalType === 'unachieved' && `Menampilkan ${unachievedList.length} KPI yang memerlukan evaluasi karena belum mencapai target.`}
+                                        {detailModalType === 'summary' && `Tingkat capaian agregat skor: ${overallCapaianPct}% (Total Skor Realisasi ${grandRealSkor.toFixed(1)} / Total Skor Target ${grandTargetSkor.toFixed(1)}).`}
+                                    </p>
+                                </div>
+                                <button onClick={() => setDetailModalOpen(false)} className="p-2 hover:bg-slate-200/60 rounded-xl transition-colors text-slate-500">
+                                    <X size={18} />
+                                </button>
                             </div>
-                            <button onClick={() => setDetailModalOpen(false)} className="p-2 hover:bg-slate-200/60 rounded-xl transition-colors text-slate-500">
-                                <X size={18} />
-                            </button>
-                        </div>
 
-                        {/* Modal Search Bar */}
-                        <div className="px-6 py-3 border-b border-slate-100 bg-white flex items-center justify-between gap-4">
-                            <div className="relative flex-1 max-w-sm">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                                <input
-                                    type="text"
-                                    value={detailSearch}
-                                    onChange={e => setDetailSearch(e.target.value)}
-                                    placeholder="Cari unit kerja, sasaran, atau KPI..."
-                                    className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs w-full focus:outline-none focus:ring-2 focus:ring-[#137fec]/40"
-                                />
+                            {/* Modal Search Bar */}
+                            <div className="px-6 py-3 border-b border-slate-100 bg-white flex items-center justify-between gap-4">
+                                <div className="relative flex-1 max-w-sm">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                    <input
+                                        type="text"
+                                        value={detailSearch}
+                                        onChange={e => setDetailSearch(e.target.value)}
+                                        placeholder="Cari unit kerja, sasaran, atau KPI..."
+                                        className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs w-full focus:outline-none focus:ring-2 focus:ring-[#137fec]/40"
+                                    />
+                                </div>
+                                <div className="text-xs text-slate-500 font-medium">
+                                    Total: <span className="font-bold text-slate-700">{modalFilteredList.length}</span> KPI
+                                </div>
                             </div>
-                            <div className="text-xs text-slate-500 font-medium">
-                                Total: <span className="font-bold text-slate-700">{modalFilteredList.length}</span> KPI
-                            </div>
-                        </div>
 
-                        {/* Modal Table Content */}
-                        <div className="p-6 overflow-y-auto flex-1">
-                            <table className="w-full text-xs text-left border-collapse">
-                                <thead>
-                                    <tr className="bg-slate-100 text-slate-700 border-b border-slate-200">
-                                        <th className="p-2.5 text-center w-10">No</th>
-                                        <th className="p-2.5">Unit Kerja</th>
-                                        <th className="p-2.5">Sasaran Strategis</th>
-                                        <th className="p-2.5">KPI / Indikator</th>
-                                        <th className="p-2.5 text-center">Target</th>
-                                        <th className="p-2.5 text-center">Skor Target</th>
-                                        <th className="p-2.5 text-center">Realisasi</th>
-                                        <th className="p-2.5 text-center">Nilai Skor</th>
-                                        <th className="p-2.5 text-center">Status / Keterangan</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                    {modalFilteredList.length === 0 ? (
-                                        <tr>
-                                            <td colSpan={9} className="p-8 text-center text-slate-400 font-medium">Tidak ada data KPI yang sesuai.</td>
+                            {/* Modal Table Content */}
+                            <div className="p-6 overflow-y-auto flex-1">
+                                <table className="w-full text-xs text-left border-collapse">
+                                    <thead>
+                                        <tr className="bg-slate-100 text-slate-700 border-b border-slate-200">
+                                            <th className="p-2.5 text-center w-10">No</th>
+                                            <th className="p-2.5">Unit Kerja</th>
+                                            <th className="p-2.5">Sasaran Strategis</th>
+                                            <th className="p-2.5">KPI / Indikator</th>
+                                            <th className="p-2.5 text-center">Target</th>
+                                            <th className="p-2.5 text-center">Skor Target</th>
+                                            <th className="p-2.5 text-center">Realisasi</th>
+                                            <th className="p-2.5 text-center">Nilai Skor</th>
+                                            <th className="p-2.5 text-center">Status / Keterangan</th>
                                         </tr>
-                                    ) : (
-                                        modalFilteredList.map((item, idx) => (
-                                            <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                                                <td className="p-2.5 text-center font-medium text-slate-500">{idx + 1}</td>
-                                                <td className="p-2.5 font-semibold text-slate-700">{item.unit_kerja?.nama_unit || '-'}</td>
-                                                <td className="p-2.5 text-slate-600 line-clamp-2">{item.sasaran_strategis || '-'}</td>
-                                                <td className="p-2.5 font-medium text-slate-800">{item.kpi || '-'}</td>
-                                                <td className="p-2.5 text-center font-mono text-slate-700">{item.target || '-'}</td>
-                                                <td className="p-2.5 text-center font-bold text-slate-700">{item.evalRes.targetSkor}</td>
-                                                <td className="p-2.5 text-center font-mono text-slate-800">{item.displayVal}</td>
-                                                <td className="p-2.5 text-center font-bold text-slate-900">{item.evalRes.realisasiSkor}</td>
-                                                <td className="p-2.5 text-center">
-                                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase border ${item.evalRes.statusClass}`}>
-                                                        {item.evalRes.levelName} ({item.evalRes.pct.toFixed(0)}%)
-                                                    </span>
-                                                </td>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {modalFilteredList.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={9} className="p-8 text-center text-slate-400 font-medium">Tidak ada data KPI yang sesuai.</td>
                                             </tr>
-                                        ))
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-
-                        {/* Modal Footer */}
-                        <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between">
-                            <div className="text-xs text-slate-500 font-semibold">
-                                Menampilkan {modalFilteredList.length} dari {modalSourceList.length} KPI terdaftar.
+                                        ) : (
+                                            modalFilteredList.map((item, idx) => (
+                                                <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                                                    <td className="p-2.5 text-center font-medium text-slate-500">{idx + 1}</td>
+                                                    <td className="p-2.5 font-semibold text-slate-700">{item.unit_kerja?.nama_unit || '-'}</td>
+                                                    <td className="p-2.5 text-slate-600 line-clamp-2">{item.sasaran_strategis || '-'}</td>
+                                                    <td className="p-2.5 font-medium text-slate-800">{item.kpi || '-'}</td>
+                                                    <td className="p-2.5 text-center font-mono text-slate-700">{item.target || '-'}</td>
+                                                    <td className="p-2.5 text-center font-bold text-slate-700">{item.evalRes.targetSkor}</td>
+                                                    <td className="p-2.5 text-center font-mono text-slate-800">{item.displayVal}</td>
+                                                    <td className="p-2.5 text-center font-bold text-slate-900">{item.evalRes.realisasiSkor}</td>
+                                                    <td className="p-2.5 text-center">
+                                                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase border ${item.evalRes.statusClass}`}>
+                                                            {item.evalRes.levelName} ({item.evalRes.pct.toFixed(0)}%)
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
                             </div>
-                            <button onClick={() => setDetailModalOpen(false)} className="px-4 py-2 bg-slate-200 text-slate-700 font-bold rounded-lg text-xs hover:bg-slate-300 transition-colors">
-                                Tutup
-                            </button>
+
+                            {/* Modal Footer */}
+                            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                                <div className="text-xs text-slate-500 font-semibold">
+                                    Menampilkan {modalFilteredList.length} dari {modalSourceList.length} KPI terdaftar.
+                                </div>
+                                <button onClick={() => setDetailModalOpen(false)} className="px-4 py-2 bg-slate-200 text-slate-700 font-bold rounded-lg text-xs hover:bg-slate-300 transition-colors">
+                                    Tutup
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 }
