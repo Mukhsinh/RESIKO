@@ -56,10 +56,10 @@ const navItems: NavItem[] = [
                 children: [
                     { label: 'Risk Profile', href: '/risiko/analisis/risk-profile', icon: <FileBarChart2 size={16} /> },
                     { label: 'Residual Risk', href: '/risiko/analisis/residual-risk', icon: <PieChart size={16} /> },
-                    { label: 'Key Risk Indicator', href: '/risiko/analisis/key-risk-indicator', icon: <Activity size={16} /> },
-                    { label: 'Loss Event', href: '/risiko/analisis/loss-event', icon: <AlertTriangle size={16} /> },
-                    { label: 'Early Warning System', href: '/risiko/analisis/early-warning', icon: <AlertTriangle size={16} /> },
                     { label: 'Risk Register', href: '/risiko/analisis/risk-register', icon: <ClipboardList size={16} /> },
+                    { label: 'Key Risk Indicator', href: '/risiko/analisis/key-risk-indicator', icon: <Activity size={16} /> },
+                    { label: 'Early Warning System', href: '/risiko/analisis/early-warning', icon: <AlertTriangle size={16} /> },
+                    { label: 'Loss Event', href: '/risiko/analisis/loss-event', icon: <AlertTriangle size={16} /> },
                 ]
             },
             { label: 'Evaluasi Risiko', href: '/risiko/evaluasi', icon: <Activity size={16} /> },

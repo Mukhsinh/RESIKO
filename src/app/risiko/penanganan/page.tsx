@@ -554,11 +554,9 @@ export default function PenangananRisikoPage() {
                                         value={form.manajemen_risiko_id}
                                         onChange={e => {
                                             const newMR = e.target.value;
-                                            const selectedRisk = risikoList.find(r => r.id === newMR);
                                             setForm(f => ({
                                                 ...f,
-                                                manajemen_risiko_id: newMR,
-                                                ...(selectedRisk?.unit_kerja_id ? { unit_kerja_id: selectedRisk.unit_kerja_id } : {})
+                                                manajemen_risiko_id: newMR
                                             }));
                                         }}
                                         required

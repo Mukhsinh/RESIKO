@@ -7,7 +7,15 @@ import { useUserProfile } from '@/hooks/useUserProfile';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { PageHeader, ScoreCard } from '@/components/SharedUI';
-import { Activity, AlertTriangle, CheckCircle2, Plus, ShieldAlert, TrendingDown, X, Save, Loader2, Bell, Download, ClipboardCheck, Search, RotateCcw, Filter } from 'lucide-react';
+import DataTable, { type Column } from '@/components/DataTable';
+import {
+    Activity, AlertTriangle, CheckCircle2, Plus, ShieldAlert, TrendingDown, X, Save, Loader2, Bell, Download,
+    ClipboardCheck, Search, RotateCcw, Filter, PieChart as PieIcon, BarChart2, Building2, Target, CheckCircle, Edit, Trash2
+} from 'lucide-react';
+import {
+    BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
+    ResponsiveContainer, Legend, PieChart, Pie, Cell
+} from 'recharts';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -36,7 +44,6 @@ interface RisikoLinked {
     nama_risiko?: string;
     kode_risiko?: string;
     nama_unit_kerja_id?: string;
-    // from manajemen_risiko
     identifikasi_risiko?: string;
     skor_risiko?: number;
     probabilitas?: number;
@@ -70,19 +77,8 @@ const EMPTY_FORM = {
     status: 'Normal',
 };
 
-/* ─── Priority Bar ─── */
-function PriorityBar({ score, max = 25 }: { score: number; max?: number }) {
-    const pct = Math.min((score / max) * 100, 100);
-    const color = score >= 15 ? 'bg-rose-500' : score >= 10 ? 'bg-orange-400' : score >= 5 ? 'bg-amber-400' : 'bg-emerald-400';
-    return (
-        <div className="w-full bg-slate-100 rounded-full h-2">
-            <div className={`${color} h-2 rounded-full transition-all duration-500`} style={{ width: `${pct}%` }} />
-        </div>
-    );
-}
-
 /* ─── Evaluasi Modal ─── */
-function EvaluasiModal({ onClose, onSave, units, kriList, risikoList, saving, initialData }: {
+function EvaluasiModal({ onClose, onSave, units, kriList, risikoList, saving, initialData, isViewOnly }: {
     onClose: () => void;
     onSave: (data: typeof EMPTY_FORM, capaian: number) => void;
     units: WorkUnit[];
@@ -90,6 +86,7 @@ function EvaluasiModal({ onClose, onSave, units, kriList, risikoList, saving, in
     risikoList: RisikoLinked[];
     saving: boolean;
     initialData?: Partial<typeof EMPTY_FORM>;
+    isViewOnly?: boolean;
 }) {
     const [form, setForm] = useState(() => ({
         ...EMPTY_FORM,
@@ -150,8 +147,12 @@ function EvaluasiModal({ onClose, onSave, units, kriList, risikoList, saving, in
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl my-8">
                 <div className="flex justify-between items-center p-6 border-b border-slate-100">
                     <div>
-                        <h2 className="font-bold text-slate-800 text-lg">Tambah Evaluasi Risiko</h2>
-                        <p className="text-xs text-slate-500 mt-0.5">Evaluasi capaian KRI dan status risiko per unit kerja</p>
+                        <h2 className="font-bold text-slate-800 text-lg">
+                            {isViewOnly ? 'Detail Evaluasi Risiko' : (initialData?.kri_id ? 'Edit Evaluasi Risiko' : 'Tambah Evaluasi Risiko')}
+                        </h2>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                            {isViewOnly ? 'Rincian data capaian KRI dan status risiko' : 'Evaluasi capaian KRI dan status risiko per unit kerja'}
+                        </p>
                     </div>
                     <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg text-slate-400"><X size={18} /></button>
                 </div>
@@ -161,21 +162,21 @@ function EvaluasiModal({ onClose, onSave, units, kriList, risikoList, saving, in
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="form-label">Unit Kerja *</label>
-                            <select className="form-input w-full" value={form.unit_kerja_id} onChange={e => handleUnitChange(e.target.value)} required>
+                            <select className="form-input w-full" value={form.unit_kerja_id} onChange={e => handleUnitChange(e.target.value)} required disabled={isViewOnly || !!initialData?.kri_id}>
                                 <option value="">-- Pilih Unit --</option>
                                 {units.map(u => <option key={u.id} value={u.id}>{u.nama_unit}</option>)}
                             </select>
                         </div>
                         <div>
                             <label className="form-label">Tanggal Evaluasi *</label>
-                            <input type="date" className="form-input w-full" value={form.tanggal_evaluasi} onChange={e => f('tanggal_evaluasi', e.target.value)} required />
+                            <input type="date" className="form-input w-full" value={form.tanggal_evaluasi} onChange={e => f('tanggal_evaluasi', e.target.value)} required disabled={isViewOnly} />
                         </div>
                     </div>
 
                     {/* KRI */}
                     <div>
                         <label className="form-label">KRI yang Dievaluasi *</label>
-                        <select className="form-input w-full" value={form.kri_id} onChange={e => handleKRIChange(e.target.value)} required>
+                        <select className="form-input w-full" value={form.kri_id} onChange={e => handleKRIChange(e.target.value)} required disabled={isViewOnly || !!initialData?.kri_id}>
                             <option value="">-- Pilih KRI --</option>
                             {kriList
                                 .filter(k => !form.unit_kerja_id || k.unit_kerja_id === form.unit_kerja_id)
@@ -210,7 +211,7 @@ function EvaluasiModal({ onClose, onSave, units, kriList, risikoList, saving, in
                             {filteredRisiko.length > 0 && (
                                 <div>
                                     <p className="text-xs font-semibold text-slate-600 mb-2">Risiko Terkait pada Unit Ini:</p>
-                                    <select className="form-input w-full" value={form.risk_input_id} onChange={e => f('risk_input_id', e.target.value)}>
+                                    <select className="form-input w-full" value={form.risk_input_id} onChange={e => f('risk_input_id', e.target.value)} disabled={isViewOnly}>
                                         <option value="">-- Pilih Risiko Terkait --</option>
                                         {filteredRisiko.map(r => (
                                             <option key={r.id} value={r.id}>
@@ -227,11 +228,11 @@ function EvaluasiModal({ onClose, onSave, units, kriList, risikoList, saving, in
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="form-label">Nilai Aktual Baru</label>
-                            <input type="number" className="form-input w-full" value={form.nilai_aktual} onChange={e => f('nilai_aktual', Number(e.target.value))} />
+                            <input type="number" step="any" className="form-input w-full" value={form.nilai_aktual} onChange={e => f('nilai_aktual', Number(e.target.value))} disabled={isViewOnly} />
                         </div>
                         <div>
                             <label className="form-label">Target / Nilai Batas</label>
-                            <input type="number" className="form-input w-full" value={form.target_nilai} onChange={e => f('target_nilai', Number(e.target.value))} />
+                            <input type="number" step="any" className="form-input w-full" value={form.target_nilai} onChange={e => f('target_nilai', Number(e.target.value))} disabled={isViewOnly} />
                         </div>
                     </div>
 
@@ -258,26 +259,28 @@ function EvaluasiModal({ onClose, onSave, units, kriList, risikoList, saving, in
                     {/* Catatan */}
                     <div>
                         <label className="form-label">Catatan Evaluasi</label>
-                        <textarea className="form-input w-full h-16 resize-none" value={form.catatan} onChange={e => f('catatan', e.target.value)} placeholder="Temuan, kendala, atau catatan evaluasi..." />
+                        <textarea className="form-input w-full h-16 resize-none" value={form.catatan} onChange={e => f('catatan', e.target.value)} placeholder="Temuan, kendala, atau catatan evaluasi..." disabled={isViewOnly} />
                     </div>
 
                     {/* Rekomendasi */}
                     <div>
                         <label className="form-label">Rekomendasi Tindak Lanjut</label>
-                        <textarea className="form-input w-full h-16 resize-none" value={form.rekomendasi} onChange={e => f('rekomendasi', e.target.value)} placeholder="Langkah perbaikan yang disarankan..." />
+                        <textarea className="form-input w-full h-16 resize-none" value={form.rekomendasi} onChange={e => f('rekomendasi', e.target.value)} placeholder="Langkah perbaikan yang disarankan..." disabled={isViewOnly} />
                     </div>
                 </div>
 
                 <div className="flex justify-end gap-3 px-6 pb-6">
-                    <button onClick={onClose} className="btn-secondary">Batal</button>
-                    <button
-                        onClick={() => onSave(form, capaian)}
-                        className="btn-primary flex items-center gap-2"
-                        disabled={saving || !form.kri_id || !form.unit_kerja_id}
-                    >
-                        {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
-                        Simpan Evaluasi
-                    </button>
+                    <button onClick={onClose} className="btn-secondary">{isViewOnly ? 'Tutup' : 'Batal'}</button>
+                    {!isViewOnly && (
+                        <button
+                            onClick={() => onSave(form, capaian)}
+                            className="btn-primary flex items-center gap-2"
+                            disabled={saving || !form.kri_id || !form.unit_kerja_id}
+                        >
+                            {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                            Simpan Evaluasi
+                        </button>
+                    )}
                 </div>
             </div>
         </div>
@@ -312,6 +315,8 @@ export default function EvaluasiRisikoPage() {
     const [kriList, setKriList] = useState<KRIItem[]>([]);
     const [risikoList, setRisikoList] = useState<RisikoLinked[]>([]);
     const [alerts, setAlerts] = useState<AlertKRIItem[]>([]);
+    const [successMessage, setSuccessMessage] = useState<string | null>(null);
+    const [isViewOnlyModal, setIsViewOnlyModal] = useState(false);
 
     const handleSearchSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -367,11 +372,13 @@ export default function EvaluasiRisikoPage() {
             rekomendasi: '',
             status: 'Melebihi Batas',
         });
+        setIsViewOnlyModal(false);
         setShowModal(true);
     };
 
     const handleOpenNewModal = () => {
         setModalInitialData(undefined);
+        setIsViewOnlyModal(false);
         setShowModal(true);
     };
 
@@ -603,39 +610,110 @@ export default function EvaluasiRisikoPage() {
             .from('key_risk_indicators')
             .select('id, nama_kri, nilai_aktual, batas_atas, batas_bawah, satuan, unit_kerja_id, unit_kerja(id, nama_unit)');
 
-        const [evalRes, kriRes] = await Promise.all([evalQuery, kriQuery]);
+        const [evalRes, kriRes, unitsRes] = await Promise.all([
+            evalQuery,
+            kriQuery,
+            supabase.from('unit_kerja').select('id, nama_unit').order('nama_unit', { ascending: true })
+        ]);
 
-        let evalData = evalRes.data as EvaluasiRow[];
+        let evalData = (evalRes.data ?? []) as EvaluasiRow[];
         let kris = (kriRes.data ?? []) as KRIItem[];
+        let unitList = (unitsRes.data ?? []) as WorkUnit[];
 
-        if (evalRes.error) {
-            console.error('Error fetching fallback evaluasi:', evalRes.error);
-            const { data: fallbackEval } = await supabase
-                .from('evaluasi_risiko')
-                .select('*, unit_kerja(id, nama_unit), risk_inputs(id, nama_risiko, kode_risiko), key_risk_indicators(id, nama_kri, nilai_aktual, batas_atas, satuan)')
-                .order('tanggal_evaluasi', { ascending: false });
-            evalData = (fallbackEval ?? []) as EvaluasiRow[];
-        }
-
-        if (kriRes.error) {
-            const { data: fallbackKri } = await supabase
-                .from('key_risk_indicators')
-                .select('id, nama_kri, nilai_aktual, batas_atas, batas_bawah, satuan, unit_kerja_id, unit_kerja(id, nama_unit)');
-            kris = (fallbackKri ?? []) as KRIItem[];
-        }
-
-        setData(evalData || []);
+        setUnits(unitList);
         setKriList(kris);
 
+        const unitMap = new Map<string, string>();
+        unitList.forEach(u => unitMap.set(u.id, u.nama_unit));
+
+        const kriMap = new Map<string, KRIItem>();
+        kris.forEach(k => kriMap.set(k.id, k));
+
+        // Hydrate explicit evaluasi records
+        evalData = evalData.map(e => {
+            const uName = e.unit_kerja?.nama_unit || (e.unit_kerja_id ? unitMap.get(e.unit_kerja_id) : '');
+            const kObj = e.kri_id ? kriMap.get(e.kri_id) : undefined;
+            const kName = e.key_risk_indicators?.nama_kri || kObj?.nama_kri || '';
+
+            return {
+                ...e,
+                unit_kerja: { id: e.unit_kerja_id || '', nama_unit: uName || 'Unknown Unit' },
+                key_risk_indicators: {
+                    id: e.kri_id || '',
+                    nama_kri: kName || 'Indikator Risiko',
+                    nilai_aktual: e.nilai_aktual,
+                    batas_atas: e.target_nilai,
+                    satuan: kObj?.satuan || ''
+                }
+            };
+        });
+
+        // Map explicit saved evaluasi records by kri_id
+        const evalMapByKri = new Map<string, EvaluasiRow>();
+        evalData.forEach(e => {
+            if (e.kri_id && !evalMapByKri.has(e.kri_id)) {
+                evalMapByKri.set(e.kri_id, e);
+            }
+        });
+
+        // Combine saved records & auto-evaluate remaining KRIs from DB
+        const combinedData: EvaluasiRow[] = [...evalData];
+
+        kris.forEach(k => {
+            if (!evalMapByKri.has(k.id)) {
+                const nilaiAktual = Number(k.nilai_aktual ?? 0);
+                const batasAtas = Number(k.batas_atas ?? 0);
+                const batasBawah = Number(k.batas_bawah ?? 0);
+
+                let status = 'Normal';
+                if (batasAtas > 0 && nilaiAktual > batasAtas) {
+                    status = 'Melebihi Batas';
+                } else if (batasAtas > 0 && nilaiAktual > batasAtas * 0.8) {
+                    status = 'Mendekati Batas';
+                } else if (batasBawah > 0 && nilaiAktual < batasBawah) {
+                    status = 'Di Bawah Batas';
+                }
+
+                const target = batasAtas > 0 ? batasAtas : 100;
+                const capaian = target > 0 ? Math.min(100, Math.round((nilaiAktual / target) * 100)) : 0;
+                const unitName = (k as any).unit_kerja?.nama_unit || (k.unit_kerja_id ? unitMap.get(k.unit_kerja_id) : 'Unknown Unit');
+
+                combinedData.push({
+                    id: `kri-auto-${k.id}`,
+                    kri_id: k.id,
+                    unit_kerja_id: k.unit_kerja_id,
+                    tahun: Number(year) || CURRENT_YEAR,
+                    tanggal_evaluasi: new Date().toISOString().split('T')[0],
+                    nilai_aktual: nilaiAktual,
+                    target_nilai: target,
+                    capaian_persen: capaian,
+                    status,
+                    catatan: `Evaluasi KRI: ${k.nama_kri}`,
+                    rekomendasi: status === 'Melebihi Batas' ? 'Segera lakukan perbaikan dan tindakan mitigasi' : 'Pertahankan kinerja dan monitoring',
+                    created_at: new Date().toISOString(),
+                    unit_kerja: { id: k.unit_kerja_id || '', nama_unit: unitName },
+                    key_risk_indicators: {
+                        id: k.id,
+                        nama_kri: k.nama_kri,
+                        nilai_aktual: nilaiAktual,
+                        batas_atas: batasAtas,
+                        satuan: k.satuan
+                    }
+                });
+            }
+        });
+
+        setData(combinedData);
+
         // Build alerts for breached KRIs
-        const breached = kris.filter(k => (k.nilai_aktual ?? 0) > (k.batas_atas ?? Infinity));
+        const breached = kris.filter(k => (Number(k.nilai_aktual) ?? 0) > (Number(k.batas_atas) ?? Infinity));
         setAlerts(breached.map(k => ({
             id: k.id,
             unit_kerja_id: k.unit_kerja_id,
-            unit: (k as any).unit_kerja?.nama_unit ?? 'Unknown Unit',
+            unit: (k as any).unit_kerja?.nama_unit || (k.unit_kerja_id ? unitMap.get(k.unit_kerja_id) : 'Unknown Unit'),
             kri: k.nama_kri,
-            aktual: k.nilai_aktual ?? 0,
-            batas: k.batas_atas ?? 0,
+            aktual: Number(k.nilai_aktual) ?? 0,
+            batas: Number(k.batas_atas) ?? 0,
             satuan: k.satuan,
         })));
 
@@ -645,26 +723,54 @@ export default function EvaluasiRisikoPage() {
     useEffect(() => { fetchData(); }, [fetchData]);
 
     useEffect(() => {
-        supabase.from('unit_kerja').select('id, nama_unit').order('nama_unit', { ascending: true }).then(({ data }: { data: any }) => setUnits((data ?? []) as WorkUnit[]));
         supabase.from('risk_inputs').select('id, nama_risiko, kode_risiko, nama_unit_kerja_id').then(({ data }: { data: any }) => setRisikoList((data ?? []) as RisikoLinked[]));
     }, []);
 
-    const byStatus = {
-        Open: filteredData.filter(d => d.status === 'Open').length,
-        Monitoring: filteredData.filter(d => d.status === 'Monitoring').length,
-        MitigasiBerjalan: filteredData.filter(d => d.status === 'Mitigasi Berjalan').length,
-        Closed: filteredData.filter(d => d.status === 'Closed').length,
+    // Extended Stats & Status Metrics
+    const statusCounts = {
+        melebihi: filteredData.filter(d => d.status === 'Melebihi Batas').length,
+        mendekati: filteredData.filter(d => d.status === 'Mendekati Batas').length,
+        diBawah: filteredData.filter(d => d.status === 'Di Bawah Batas').length,
+        normal: filteredData.filter(d => d.status === 'Normal' || d.status === 'Closed' || !d.status).length,
     };
 
-    // Group by unit kerja
-    const grouped = Object.entries(
-        filteredData.reduce<Record<string, EvaluasiRow[]>>((acc, r) => {
-            const unit = (r.unit_kerja as { nama_unit: string })?.nama_unit ?? 'Tidak Diketahui';
-            if (!acc[unit]) acc[unit] = [];
-            acc[unit].push(r);
-            return acc;
-        }, {})
-    );
+    const totalEvaluasiCount = filteredData.length;
+    const avgCapaianOverall = totalEvaluasiCount > 0
+        ? Math.round(filteredData.reduce((s, r) => s + (r.capaian_persen ?? 0), 0) / totalEvaluasiCount)
+        : 0;
+
+    const uniqueUnitsCount = new Set(filteredData.map(d => d.unit_kerja_id || (d.unit_kerja as any)?.id).filter(Boolean)).size;
+
+    // Group by unit kerja for chart
+    const groupedMap = filteredData.reduce<Record<string, EvaluasiRow[]>>((acc, r) => {
+        const unit = (r.unit_kerja as { nama_unit: string })?.nama_unit ?? 'Tidak Diketahui';
+        if (!acc[unit]) acc[unit] = [];
+        acc[unit].push(r);
+        return acc;
+    }, {});
+
+    const grouped = Object.entries(groupedMap);
+
+    // Chart Data 1: Status Distribution (Pie Chart)
+    const pieChartData = [
+        { name: 'Melebihi Batas (Kritis)', value: statusCounts.melebihi, color: '#EF4444' },
+        { name: 'Mendekati Batas (Waspada)', value: statusCounts.mendekati, color: '#F59E0B' },
+        { name: 'Di Bawah Batas (Perhatian)', value: statusCounts.diBawah, color: '#3B82F6' },
+        { name: 'Normal / Aman', value: statusCounts.normal, color: '#10B981' },
+    ].filter(d => d.value > 0);
+
+    // Chart Data 2: Average Risk Capaian Per Work Unit (Bar Chart)
+    const barChartData = grouped.map(([unit, evals]) => {
+        const avg = Math.round(evals.reduce((s, r) => s + (r.capaian_persen ?? 0), 0) / evals.length);
+        const shortName = unit.replace(/^(instalasi|unit|ruang|pelayanan|direktorat)\s+/i, '');
+        return {
+            unitFull: unit,
+            unitShort: shortName.length > 15 ? shortName.substring(0, 15) + '...' : shortName,
+            'Capaian (%)': avg,
+            totalEval: evals.length,
+            fillColor: avg < 60 ? '#EF4444' : avg < 80 ? '#F59E0B' : '#10B981',
+        };
+    });
 
     const handleSaveEvaluasi = async (form: typeof EMPTY_FORM, capaian: number) => {
         setSaving(true);
@@ -691,10 +797,14 @@ export default function EvaluasiRisikoPage() {
             };
 
             const { error } = await supabase.from('evaluasi_risiko').insert(payload);
-            if (error) { console.error(error); alert('Gagal menyimpan evaluasi: ' + error.message); }
-            else {
+            if (error) {
+                console.error(error);
+                alert('Gagal menyimpan evaluasi: ' + error.message);
+            } else {
                 setShowModal(false);
-                fetchData();
+                setSuccessMessage('✅ Data Evaluasi Risiko berhasil disimpan dan preview hasil inputan telah diperbarui!');
+                setTimeout(() => setSuccessMessage(null), 7000);
+                await fetchData();
 
                 // If breached, also insert EWS alert
                 if (status === 'Melebihi Batas' && kri) {
@@ -710,9 +820,130 @@ export default function EvaluasiRisikoPage() {
                     });
                 }
             }
-        } catch (e) { console.error(e); }
-        finally { setSaving(false); }
+        } catch (e) {
+            console.error(e);
+            alert('Terjadi kesalahan saat menyimpan evaluasi.');
+        } finally {
+            setSaving(false);
+        }
     };
+
+    const handleDeleteEvaluasi = async (row: EvaluasiRow) => {
+        if (row.id.startsWith('kri-auto-')) {
+            alert('Data KRI otomatis ini berasal dari sistem KRI. Anda dapat menambahkan evaluasi khusus dengan tombol + Tambah Evaluasi.');
+            return;
+        }
+        if (!confirm('Apakah Anda yakin ingin menghapus data evaluasi risiko ini?')) return;
+        try {
+            const { error } = await supabase.from('evaluasi_risiko').delete().eq('id', row.id);
+            if (error) alert('Gagal menghapus: ' + error.message);
+            else {
+                setSuccessMessage('🗑️ Data Evaluasi Risiko berhasil dihapus!');
+                setTimeout(() => setSuccessMessage(null), 5000);
+                fetchData();
+            }
+        } catch (e) { console.error(e); }
+    };
+
+    const handleViewEvaluasi = (row: EvaluasiRow) => {
+        setModalInitialData({
+            unit_kerja_id: row.unit_kerja_id || '',
+            kri_id: row.kri_id || '',
+            risk_input_id: row.risk_input_id || '',
+            tanggal_evaluasi: row.tanggal_evaluasi || new Date().toISOString().split('T')[0],
+            nilai_aktual: row.nilai_aktual || 0,
+            target_nilai: row.target_nilai || 0,
+            catatan: row.catatan || '',
+            rekomendasi: row.rekomendasi || '',
+            status: row.status || 'Normal',
+        });
+        setIsViewOnlyModal(true);
+        setShowModal(true);
+    };
+
+    const handleEditEvaluasi = (row: EvaluasiRow) => {
+        if (row.id.startsWith('kri-auto-')) {
+            alert('Data KRI otomatis ini belum memiliki rekaman fisik di database Evaluasi Risiko. Anda dapat menambahkannya melalui "Evaluasi" pada alert/baru, atau ubah KRI itu sendiri.');
+            return;
+        }
+        setModalInitialData({
+            unit_kerja_id: row.unit_kerja_id || '',
+            kri_id: row.kri_id || '',
+            risk_input_id: row.risk_input_id || '',
+            tanggal_evaluasi: row.tanggal_evaluasi || new Date().toISOString().split('T')[0],
+            nilai_aktual: row.nilai_aktual || 0,
+            target_nilai: row.target_nilai || 0,
+            catatan: row.catatan || '',
+            rekomendasi: row.rekomendasi || '',
+            status: row.status || 'Normal',
+        });
+        setIsViewOnlyModal(false);
+        setShowModal(true);
+    };
+
+    // Columns for Preview Table
+    const columns: Column<EvaluasiRow>[] = [
+        {
+            key: 'tanggal_evaluasi',
+            label: 'Tanggal & Unit',
+            render: r => (
+                <div>
+                    <p className="font-semibold text-slate-800">{r.tanggal_evaluasi ? new Date(r.tanggal_evaluasi).toLocaleDateString('id-ID') : '-'}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">{r.unit_kerja?.nama_unit ?? '-'}</p>
+                </div>
+            )
+        },
+        {
+            key: 'kri_id',
+            label: 'Indikator / KRI',
+            render: r => (
+                <div>
+                    <p className="font-medium text-slate-700">{r.key_risk_indicators?.nama_kri ?? 'Indikator Risiko'}</p>
+                    {r.catatan && <p className="text-xs text-slate-400 mt-0.5 italic line-clamp-1">"{r.catatan}"</p>}
+                </div>
+            )
+        },
+        {
+            key: 'nilai_aktual',
+            label: 'Nilai Aktual & Target',
+            className: 'text-center',
+            render: r => (
+                <div className="text-center">
+                    <span className="font-bold text-slate-800">{r.nilai_aktual ?? 0}</span>
+                    <span className="text-xs text-slate-400"> / {r.target_nilai ?? 0} {r.key_risk_indicators?.satuan || ''}</span>
+                </div>
+            )
+        },
+        {
+            key: 'capaian_persen',
+            label: 'Capaian',
+            className: 'text-center',
+            render: r => (
+                <div className="text-center">
+                    <span className={`font-bold ${Number(r.capaian_persen) >= 80 ? 'text-emerald-600' : Number(r.capaian_persen) >= 60 ? 'text-amber-500' : 'text-rose-600'}`}>
+                        {r.capaian_persen ?? 0}%
+                    </span>
+                </div>
+            )
+        },
+        {
+            key: 'status',
+            label: 'Status Evaluasi',
+            className: 'text-center',
+            render: r => {
+                const badgeClass =
+                    r.status === 'Melebihi Batas' ? 'badge-red' :
+                        r.status === 'Mendekati Batas' ? 'badge-yellow' :
+                            r.status === 'Di Bawah Batas' ? 'badge-blue' : 'badge-green';
+                return <span className={badgeClass}>{r.status || 'Normal'}</span>;
+            }
+        },
+        {
+            key: 'rekomendasi',
+            label: 'Rekomendasi Tindak Lanjut',
+            render: r => <span className="text-xs text-slate-600 line-clamp-2">{r.rekomendasi || '-'}</span>
+        }
+    ];
 
     return (
         <div>
@@ -725,12 +956,13 @@ export default function EvaluasiRisikoPage() {
                     risikoList={risikoList}
                     saving={saving}
                     initialData={modalInitialData}
+                    isViewOnly={isViewOnlyModal}
                 />
             )}
 
             <PageHeader
                 title="Evaluasi Risiko"
-                subtitle="Evaluasi dan perbandingan profil risiko antar unit kerja."
+                subtitle="Evaluasi dan perbandingan profil risiko antar unit kerja secara komprehensif."
                 actions={
                     <div className="flex gap-3 items-center">
                         <button className="btn-secondary flex items-center gap-2" onClick={handleExportPDF} disabled={downloading}>
@@ -745,6 +977,19 @@ export default function EvaluasiRisikoPage() {
                     </div>
                 }
             />
+
+            {/* Success Toast Banner */}
+            {successMessage && (
+                <div className="mb-6 bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center justify-between shadow-sm animate-in fade-in duration-300">
+                    <div className="flex items-center gap-3">
+                        <CheckCircle className="text-emerald-600 flex-shrink-0" size={20} />
+                        <p className="text-sm font-semibold text-emerald-800">{successMessage}</p>
+                    </div>
+                    <button onClick={() => setSuccessMessage(null)} className="text-emerald-500 hover:text-emerald-700 p-1 rounded-lg">
+                        <X size={16} />
+                    </button>
+                </div>
+            )}
 
             {/* Filter Bar */}
             <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -846,74 +1091,173 @@ export default function EvaluasiRisikoPage() {
                 </div>
             )}
 
-            <div className="grid grid-cols-2 xl:grid-cols-4 gap-5 mb-8">
-                <ScoreCard icon={<ShieldAlert size={22} className="text-slate-500" />} title="Total Evaluasi" value={filteredData.length} colorClass="bg-slate-50 border-slate-100" />
-                <ScoreCard icon={<AlertTriangle size={22} className="text-rose-500" />} title="Open" value={byStatus.Open} colorClass="bg-rose-50 border-rose-100" />
-                <ScoreCard icon={<Activity size={22} className="text-[#137fec]" />} title="Mitigasi Berjalan" value={byStatus.MitigasiBerjalan} colorClass="bg-blue-50 border-blue-100" />
-                <ScoreCard icon={<CheckCircle2 size={22} className="text-emerald-500" />} title="Closed" value={byStatus.Closed} colorClass="bg-emerald-50 border-emerald-100" />
+            {/* Rich Score Cards Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
+                <ScoreCard
+                    icon={<ShieldAlert size={22} className="text-slate-500" />}
+                    title="Total Evaluasi"
+                    value={totalEvaluasiCount}
+                    subtitle="Indikator terproses"
+                    colorClass="bg-slate-50 border-slate-100"
+                />
+                <ScoreCard
+                    icon={<AlertTriangle size={22} className="text-rose-500" />}
+                    title="Melebihi Batas"
+                    value={statusCounts.melebihi}
+                    subtitle="Memerlukan respon"
+                    colorClass="bg-rose-50 border-rose-100"
+                />
+                <ScoreCard
+                    icon={<AlertTriangle size={22} className="text-amber-500" />}
+                    title="Mendekati Batas"
+                    value={statusCounts.mendekati}
+                    subtitle="Kondisi waspada"
+                    colorClass="bg-amber-50 border-amber-100"
+                />
+                <ScoreCard
+                    icon={<CheckCircle2 size={22} className="text-emerald-500" />}
+                    title="Kondisi Aman"
+                    value={statusCounts.normal + statusCounts.diBawah}
+                    subtitle="Dalam batas toleransi"
+                    colorClass="bg-emerald-50 border-emerald-100"
+                />
+                <ScoreCard
+                    icon={<Target size={22} className="text-[#137fec]" />}
+                    title="Rata-rata Capaian"
+                    value={`${avgCapaianOverall}%`}
+                    subtitle="Skor kinerja risiko"
+                    colorClass="bg-blue-50 border-blue-100"
+                />
+                <ScoreCard
+                    icon={<Building2 size={22} className="text-indigo-500" />}
+                    title="Unit Kerja Active"
+                    value={uniqueUnitsCount}
+                    subtitle="Tervalidasi"
+                    colorClass="bg-indigo-50 border-indigo-100"
+                />
             </div>
 
-            <div className="card">
-                <div className="flex items-center gap-2 mb-6">
-                    <TrendingDown size={18} className="text-[#137fec]" />
-                    <h3 className="font-bold text-slate-700">Profil Risiko per Unit Kerja</h3>
-                </div>
-                {loading ? (
-                    <div className="flex items-center justify-center py-12 text-slate-400">
-                        <div className="animate-spin w-5 h-5 border-2 border-slate-200 border-t-[#137fec] rounded-full mr-2" />
-                        <span className="text-sm">Memuat data...</span>
+            {/* Visual Charts Dashboard */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
+                {/* Chart 1: Donut Status Distribution */}
+                <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-100 shadow-sm p-6 flex flex-col justify-between">
+                    <div>
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                <PieIcon size={18} className="text-[#137fec]" />
+                                Proporsi Status Evaluasi Risiko
+                            </h3>
+                            <span className="text-xs text-slate-400 font-mono">{filteredData.length} item</span>
+                        </div>
+                        <p className="text-xs text-slate-500 mb-4">Distribusi persentase status evaluasi profil risiko secara keseluruhan</p>
                     </div>
-                ) : filteredData.length === 0 ? (
-                    <div className="text-center py-12 text-slate-400">
-                        <div className="text-4xl mb-3">📊</div>
-                        <p className="text-sm font-medium">Tidak ada data evaluasi risiko yang sesuai filter</p>
-                        <p className="text-xs mt-1">Coba sesuaikan kata kunci pencarian, filter unit kerja, atau pilihan tahun.</p>
-                    </div>
-                ) : (
-                    <div className="space-y-4">
-                        {grouped.map(([unit, evals]) => {
-                            const avgCapaian = evals.reduce((s, r) => s + (r.capaian_persen ?? 0), 0) / evals.length;
-                            const hasAlert = alerts.some(a => a.unit === unit);
-                            return (
-                                <div key={unit} className={`p-4 rounded-xl ${hasAlert ? 'bg-rose-50 border border-rose-100' : 'bg-slate-50'}`}>
-                                    <div className="flex items-center justify-between mb-2">
-                                        <div className="flex items-center gap-2">
-                                            {hasAlert && <AlertTriangle size={16} className="text-rose-500" />}
-                                            <p className="font-semibold text-slate-700 text-sm">{unit}</p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className={`text-lg font-bold ${avgCapaian < 60 ? 'text-rose-600' : avgCapaian < 80 ? 'text-amber-500' : 'text-emerald-600'}`}>{avgCapaian.toFixed(0)}%</p>
-                                            <p className="text-[10px] text-slate-400">Rata-rata Capaian</p>
-                                        </div>
-                                    </div>
-                                    <PriorityBar score={avgCapaian} max={100} />
-                                    <div className="flex gap-3 mt-2 flex-wrap text-[10px] text-slate-500">
-                                        <span>{evals.length} evaluasi</span>
-                                        {hasAlert && <span className="text-rose-600 font-semibold">⚠️ Melebihi batas KRI</span>}
-                                    </div>
 
-                                    {/* KRI detail cards */}
-                                    <div className="mt-3 space-y-2">
-                                        {evals.map(ev => (
-                                            <div key={ev.id} className="bg-white rounded-lg p-3 text-xs flex items-center justify-between border border-slate-100">
-                                                <div>
-                                                    <p className="font-medium text-slate-700">{(ev.key_risk_indicators as any)?.nama_kri ?? 'KRI'}</p>
-                                                    <p className="text-slate-400 mt-0.5">{new Date(ev.tanggal_evaluasi).toLocaleDateString('id-ID')} · {ev.catatan ?? ''}</p>
-                                                </div>
-                                                <div className="text-right">
-                                                    <p className={`font-bold text-sm ${ev.status === 'Melebihi Batas' ? 'text-rose-600' : ev.status === 'Normal' ? 'text-emerald-600' : 'text-amber-600'}`}>
-                                                        {ev.nilai_aktual ?? '-'}
-                                                    </p>
-                                                    <p className="text-slate-400">Target: {ev.target_nilai ?? '-'}</p>
-                                                </div>
-                                            </div>
+                    <div className="h-64 w-full relative">
+                        {pieChartData.length === 0 ? (
+                            <div className="h-full flex items-center justify-center text-xs text-slate-400">Tidak ada data untuk grafik</div>
+                        ) : (
+                            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                                <PieChart>
+                                    <Pie
+                                        data={pieChartData}
+                                        cx="50%"
+                                        cy="50%"
+                                        innerRadius={60}
+                                        outerRadius={85}
+                                        paddingAngle={4}
+                                        dataKey="value"
+                                    >
+                                        {pieChartData.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={entry.color} />
                                         ))}
-                                    </div>
-                                </div>
-                            );
-                        })}
+                                    </Pie>
+                                    <RechartsTooltip
+                                        formatter={(val: any) => [`${val} Indikator`, 'Jumlah']}
+                                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                    />
+                                    <Legend wrapperStyle={{ paddingTop: '10px', fontSize: '11px' }} />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        )}
                     </div>
-                )}
+                </div>
+
+                {/* Chart 2: Bar Chart Performance per Unit */}
+                <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-100 shadow-sm p-6 flex flex-col justify-between">
+                    <div>
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                <BarChart2 size={18} className="text-[#137fec]" />
+                                Matriks Capaian Kinerja Risiko per Unit Kerja
+                            </h3>
+                            <span className="text-xs text-slate-400 font-mono">{barChartData.length} unit</span>
+                        </div>
+                        <p className="text-xs text-slate-500 mb-4">Perbandingan rata-rata capaian (%) evaluasi profil risiko antar unit kerja</p>
+                    </div>
+
+                    <div className="h-64 w-full">
+                        {barChartData.length === 0 ? (
+                            <div className="h-full flex items-center justify-center text-xs text-slate-400">Tidak ada data unit untuk grafik</div>
+                        ) : (
+                            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                                <BarChart data={barChartData} margin={{ top: 10, right: 20, left: -10, bottom: 25 }}>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                                    <XAxis
+                                        dataKey="unitShort"
+                                        axisLine={false}
+                                        tickLine={false}
+                                        tick={{ fontSize: 10, fill: '#64748B' }}
+                                        interval={0}
+                                        angle={-20}
+                                        textAnchor="end"
+                                    />
+                                    <YAxis
+                                        domain={[0, 100]}
+                                        axisLine={false}
+                                        tickLine={false}
+                                        tick={{ fontSize: 11, fill: '#64748B' }}
+                                        unit="%"
+                                    />
+                                    <RechartsTooltip
+                                        formatter={(val: any) => [`${val}%`, 'Rata-rata Capaian']}
+                                        labelFormatter={(label, items) => {
+                                            const item = items?.[0]?.payload;
+                                            return item ? item.unitFull : label;
+                                        }}
+                                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                    />
+                                    <Bar dataKey="Capaian (%)" radius={[6, 6, 0, 0]} maxBarSize={36}>
+                                        {barChartData.map((entry, index) => (
+                                            <Cell key={`bar-${index}`} fill={entry.fillColor} />
+                                        ))}
+                                    </Bar>
+                                </BarChart>
+                            </ResponsiveContainer>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            {/* Preview Data Table */}
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+                <div className="flex items-center justify-between mb-6">
+                    <div>
+                        <h3 className="font-bold text-slate-800 text-base">Preview Data Hasil Evaluasi Risiko</h3>
+                        <p className="text-xs text-slate-500 mt-0.5">Daftar rekapan hasil evaluasi risiko yang telah terinput dan tervalidasi</p>
+                    </div>
+                    <span className="text-xs font-semibold px-3 py-1 bg-slate-100 text-slate-600 rounded-full">
+                        {filteredData.length} Rekaman
+                    </span>
+                </div>
+
+                <DataTable
+                    columns={columns}
+                    data={filteredData}
+                    isLoading={loading}
+                    onView={handleViewEvaluasi}
+                    onEdit={isAuditor ? undefined : handleEditEvaluasi}
+                    onDelete={isAuditor ? undefined : handleDeleteEvaluasi}
+                />
             </div>
         </div>
     );
